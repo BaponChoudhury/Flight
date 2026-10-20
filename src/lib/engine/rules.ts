@@ -9,11 +9,12 @@ import type {
   FlightLeg,
   GroundAccess,
   NormalisedItinerary,
+  RouteOption,
   RouteType,
   SearchRequest,
   Settings,
 } from "@/lib/types";
-import { crossesLocalMidnight, minutesBetween } from "./time";
+import { addMinutes, crossesLocalMidnight, minutesBetween } from "./time";
 
 // ---------- Terminals & buffers ----------
 
@@ -206,4 +207,57 @@ export function rankOptions<T extends Scored>(options: T[], priceWeight: number,
   const cheapest = [...options].sort((a, b) => rankCost(a) - rankCost(b))[0] ?? null;
   const fastest = [...options].sort((a, b) => a.totalMins - b.totalMins || a.costs.total - b.costs.total)[0] ?? null;
   return { cheapest, fastest, bestValue: byValue[0] ?? null, top: byValue.slice(0, 10) };
+}
+
+// ---------- User-entered ground travel (applied on the results page) ----------
+
+export type GroundMode = "train" | "cab";
+
+/** What the user typed for one UK airport. Blank fields are null. */
+export interface GroundInput {
+  trainPerPerson: number | null;
+  trainMins: number | null;
+  cabTotal: number | null; // whole car
+  cabMins: number | null;
+  use: "cheapest" | GroundMode;
+}
+
+export interface GroundChoice {
+  mode: GroundMode;
+  costGbp: number; // whole party
+  mins: number;
+  detail: string;
+}
+
+export function groundChoices(input: GroundInput, pax: number): GroundChoice[] {
+  const out: GroundChoice[] = [];
+  if (input.trainPerPerson != null && input.trainMins != null)
+    out.push({ mode: "train", costGbp: input.trainPerPerson * pax, mins: input.trainMins, detail: `${pax} × £${input.trainPerPerson}` });
+  if (input.cabTotal != null && input.cabMins != null)
+    out.push({ mode: "cab", costGbp: input.cabTotal, mins: input.cabMins, detail: "whole car" });
+  return out;
+}
+
+/** The option the route will use, or null if the user hasn't entered a usable one. */
+export function pickGround(input: GroundInput, pax: number): GroundChoice | null {
+  const choices = groundChoices(input, pax);
+  if (input.use !== "cheapest") return choices.find((c) => c.mode === input.use) ?? null;
+  return [...choices].sort((a, b) => a.costGbp - b.costGbp || a.mins - b.mins)[0] ?? null;
+}
+
+/**
+ * Re-price an option with a different way of getting to the UK airport:
+ * replaces the ground cost and moves "leave home" so door-to-door time stays right.
+ */
+export function applyGround(o: RouteOption, choice: GroundChoice, ukArrivalMins: number): RouteOption {
+  const firstDepart = o.legs[0].itinerary.departUtc;
+  const leaveHomeUtc = addMinutes(firstDepart, -(ukArrivalMins + choice.mins));
+  const ground = Math.round(choice.costGbp * 100) / 100;
+  return {
+    ...o,
+    ground: { ...o.ground, mode: choice.mode, cost_gbp: choice.costGbp, per_person: false, duration_mins: choice.mins, notes: choice.detail },
+    costs: { ...o.costs, ground, total: Math.round((o.costs.total - o.costs.ground + ground) * 100) / 100 },
+    leaveHomeUtc,
+    totalMins: minutesBetween(leaveHomeUtc, o.arriveUtc),
+  };
 }

@@ -84,7 +84,7 @@ export const DEFAULT_TERMINAL_RULES: TerminalRule[] = [
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
-  min_buffer_mins: 210,
+  min_buffer_mins: 180,
   max_buffer_mins: 840,
   overnight_max_buffer_mins: 1440,
   terminal_change_default_mins: 45,

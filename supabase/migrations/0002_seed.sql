@@ -61,7 +61,7 @@ insert into terminal_rules (airport, from_terminal, to_terminal, extra_mins) val
 on conflict do nothing;
 
 insert into settings (key, value) values
-  ('min_buffer_mins', '210'::jsonb),
+  ('min_buffer_mins', '180'::jsonb),
   ('max_buffer_mins', '840'::jsonb),
   ('overnight_max_buffer_mins', '1440'::jsonb),
   ('terminal_change_default_mins', '45'::jsonb),

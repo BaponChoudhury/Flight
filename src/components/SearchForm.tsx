@@ -40,6 +40,7 @@ export function SearchForm({
     ukAirports: ukAirports.map((a) => a.iata),
   });
   const [more, setMore] = useState(false);
+  const [bufferHours, setBufferHours] = useState(String(config.settings.min_buffer_mins / 60));
   const set = <K extends keyof SearchRequest>(k: K, v: SearchRequest[K]) => setReq((r) => ({ ...r, [k]: v }));
   const hourOpt = (v: string) => (v === "" ? null : Number(v));
 
@@ -93,6 +94,29 @@ export function SearchForm({
         </div>
       </div>
 
+      <div>
+        <label className={label} htmlFor="buf">Time to change from international to domestic flight (hours)</label>
+        <input
+          id="buf"
+          type="number"
+          inputMode="decimal"
+          min={1}
+          max={12}
+          step={0.25}
+          className={field}
+          value={bufferHours}
+          onChange={(e) => {
+            setBufferHours(e.target.value);
+            const h = Number(e.target.value);
+            if (e.target.value !== "" && Number.isFinite(h)) set("minBufferMins", Math.round(h * 60));
+          }}
+          required
+        />
+        <p className="mt-1 text-xs text-slate-500">
+          For separate tickets: immigration, collecting bags and checking in again. We add 45 min if you also change terminal (e.g. Delhi T3 → T1).
+        </p>
+      </div>
+
       <button type="button" className="text-sm font-medium text-sky-700 underline dark:text-sky-400" onClick={() => setMore((m) => !m)}>
         {more ? "Hide" : "More"} options
       </button>
@@ -132,13 +156,6 @@ export function SearchForm({
                 {Array.from({ length: 23 }, (_, i) => i).map((h) => <option key={h} value={h}>{String(h).padStart(2, "0")}:59</option>)}
               </select>
             </div>
-          </div>
-          <div>
-            <label className={label} htmlFor="buf">
-              Minimum time between separate flights: {Math.floor((req.minBufferMins ?? 210) / 60)}h {(req.minBufferMins ?? 210) % 60}m
-            </label>
-            <input id="buf" type="range" min={180} max={360} step={15} className="w-full" value={req.minBufferMins ?? 210} onChange={(e) => set("minBufferMins", Number(e.target.value))} />
-            <p className="text-xs text-slate-500">Time for immigration, collecting bags and checking in again.</p>
           </div>
           <label className="flex items-center gap-2 text-base">
             <input type="checkbox" className="h-5 w-5" checked={req.allowOvernight} onChange={(e) => set("allowOvernight", e.target.checked)} />

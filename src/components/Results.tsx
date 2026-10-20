@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { rankOptions } from "@/lib/engine/rules";
+import { useEffect, useMemo, useState } from "react";
+import { applyGround, groundChoices, pickGround, rankOptions, type GroundChoice } from "@/lib/engine/rules";
 import { formatDuration, formatLocalDay, formatLocalTime } from "@/lib/engine/time";
 import type { Badge, BookingLink, FlightLeg, RouteOption, SearchRequest, SearchResponse, Settings } from "@/lib/types";
+import { EMPTY_DRAFT, GroundPanel, toInput, type GroundDraft } from "./GroundPanel";
 
 const gbp = (n: number) => `£${n.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`;
 
@@ -92,7 +93,10 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
   );
 }
 
-function OptionCard({ o, tz, req, highlight }: { o: RouteOption; tz: Tz; req: SearchRequest; highlight?: string }) {
+const modeLabel = (m: string) => (m === "train" ? "Train" : m === "cab" ? "Cab" : m);
+
+function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz: Tz; req: SearchRequest; highlight?: string; groundAlts: GroundChoice[] }) {
+  const other = groundAlts.find((g) => g.mode !== o.ground.mode);
   const [open, setOpen] = useState(false);
   const destTz = tz[o.dest] ?? "Asia/Kolkata";
   const c = o.connection;
@@ -127,9 +131,16 @@ function OptionCard({ o, tz, req, highlight }: { o: RouteOption; tz: Tz; req: Se
             <li className="border-l-2 border-slate-400 pl-4">
               <p className="font-semibold">🏠 Leave {req.originArea} {when(o.leaveHomeUtc, UK_TZ)}</p>
               <p className="text-sm text-slate-600 dark:text-slate-400">
-                {o.ground.mode} to {o.ukAirport}, about {formatDuration(o.ground.duration_mins)} · {gbp(o.costs.ground)}
-                {o.ground.notes && ` · ${o.ground.notes}`}
+                {o.ground.mode === "not set"
+                  ? `Travel to ${o.ukAirport} not entered yet — add it under "Getting to the airport".`
+                  : `${modeLabel(o.ground.mode)} to ${o.ukAirport}, about ${formatDuration(o.ground.duration_mins)} · ${gbp(o.costs.ground)}${o.ground.notes ? ` (${o.ground.notes})` : ""}`}
               </p>
+              {other && (
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Or {modeLabel(other.mode).toLowerCase()}: {gbp(other.costGbp)}, about {formatDuration(other.mins)} ({other.costGbp > o.costs.ground ? "+" : "−"}
+                  {gbp(Math.abs(other.costGbp - o.costs.ground))})
+                </p>
+              )}
             </li>
             <LegBlock leg={o.legs[0]} tz={tz} req={req} />
             {c && (
@@ -150,7 +161,7 @@ function OptionCard({ o, tz, req, highlight }: { o: RouteOption; tz: Tz; req: Se
 
           <table className="w-full text-sm">
             <tbody>
-              <tr><td>Getting to {o.ukAirport}</td><td className="text-right">{gbp(o.costs.ground)}</td></tr>
+              <tr><td>{o.ground.mode === "not set" ? `Getting to ${o.ukAirport} (not entered)` : `${modeLabel(o.ground.mode)} to ${o.ukAirport}`}</td><td className="text-right">{gbp(o.costs.ground)}</td></tr>
               {o.costs.fares.map((f, i) => (
                 <tr key={i}><td>Flight {o.legs[i].itinerary.origin} → {o.legs[i].itinerary.dest}</td><td className="text-right">{gbp(f)}</td></tr>
               ))}
@@ -167,9 +178,63 @@ function OptionCard({ o, tz, req, highlight }: { o: RouteOption; tz: Tz; req: Se
   );
 }
 
+function draftKey(originArea: string) {
+  return `ground:${originArea}`;
+}
+
+/** Start from what the user typed last time on this device, else the admin defaults. */
+function initialDrafts(data: SearchResponse, req: SearchRequest): Record<string, GroundDraft> {
+  let saved: Record<string, GroundDraft> = {};
+  try {
+    saved = JSON.parse(localStorage.getItem(draftKey(req.originArea)) ?? "{}");
+  } catch {
+    /* storage unavailable */
+  }
+  const drafts: Record<string, GroundDraft> = { ...saved };
+  for (const o of data.options) {
+    const g = o.ground;
+    if (drafts[o.ukAirport] || g.mode === "not set") continue;
+    const perPerson = g.per_person ? g.cost_gbp : null;
+    drafts[o.ukAirport] = {
+      ...EMPTY_DRAFT,
+      ...(g.mode === "train" && perPerson != null ? { trainPerPerson: String(perPerson), trainMins: String(g.duration_mins) } : {}),
+      ...(g.mode === "cab" && !g.per_person ? { cabTotal: String(g.cost_gbp), cabMins: String(g.duration_mins) } : {}),
+    };
+  }
+  return drafts;
+}
+
 export function Results({ data, req, settings }: { data: SearchResponse; req: SearchRequest; settings: Settings }) {
   const [priceWeight, setPriceWeight] = useState(0.6);
-  const ranked = useMemo(() => rankOptions(data.options, priceWeight, settings), [data.options, priceWeight, settings]);
+  const pax = req.adults + req.children;
+  const airports = useMemo(() => [...new Set(data.options.map((o) => o.ukAirport))].sort(), [data.options]);
+  const [drafts, setDrafts] = useState<Record<string, GroundDraft>>({});
+  useEffect(() => setDrafts(initialDrafts(data, req)), [data, req]);
+  function updateDraft(airport: string, d: GroundDraft) {
+    const next = { ...drafts, [airport]: d };
+    setDrafts(next);
+    try {
+      localStorage.setItem(draftKey(req.originArea), JSON.stringify(next));
+    } catch {
+      /* storage unavailable */
+    }
+  }
+
+  // Stitch the user's train/cab prices into every option, then rank.
+  const alts = useMemo(() => {
+    const m: Record<string, GroundChoice[]> = {};
+    for (const a of airports) m[a] = groundChoices(toInput(drafts[a] ?? EMPTY_DRAFT), pax);
+    return m;
+  }, [airports, drafts, pax]);
+  const options = useMemo(
+    () =>
+      data.options.map((o) => {
+        const choice = pickGround(toInput(drafts[o.ukAirport] ?? EMPTY_DRAFT), pax);
+        return choice ? applyGround(o, choice, settings.uk_airport_arrival_mins) : o;
+      }),
+    [data.options, drafts, pax, settings.uk_airport_arrival_mins],
+  );
+  const ranked = useMemo(() => rankOptions(options, priceWeight, settings), [options, priceWeight, settings]);
   const tz = data.airportTz;
   const s = data.stats;
   const asOf = data.options.map((o) => o.priceAsOf).sort()[0];
@@ -200,9 +265,11 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
 
       {data.options.length > 0 && (
         <>
+          <GroundPanel originArea={req.originArea} airports={airports} drafts={drafts} pax={pax} onChange={updateDraft} />
+
           <div className="grid gap-3">
-            {ranked.cheapest && <OptionCard o={ranked.cheapest} tz={tz} req={req} highlight="Cheapest" />}
-            {ranked.fastest && ranked.fastest !== ranked.cheapest && <OptionCard o={ranked.fastest} tz={tz} req={req} highlight="Fastest" />}
+            {ranked.cheapest && <OptionCard o={ranked.cheapest} tz={tz} req={req} highlight="Cheapest" groundAlts={alts[ranked.cheapest.ukAirport] ?? []} />}
+            {ranked.fastest && ranked.fastest !== ranked.cheapest && <OptionCard o={ranked.fastest} tz={tz} req={req} highlight="Fastest" groundAlts={alts[ranked.fastest.ukAirport] ?? []} />}
           </div>
 
           <div>
@@ -218,7 +285,7 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
 
           <h2 className="text-lg font-semibold">Top 10 by best value</h2>
           <div className="grid gap-3">
-            {ranked.top.map((o, i) => <OptionCard key={o.id} o={o} tz={tz} req={req} highlight={i === 0 ? "Best value" : undefined} />)}
+            {ranked.top.map((o, i) => <OptionCard key={o.id} o={o} tz={tz} req={req} highlight={i === 0 ? "Best value" : undefined} groundAlts={alts[o.ukAirport] ?? []} />)}
           </div>
         </>
       )}

@@ -35,7 +35,7 @@ All tables have row-level security enabled with no policies, so the public anon 
 
 ## How a search works
 
-1. **UK origins** (BHX, MAN, LHR, LGW) that have a `ground_access` row for your home area.
+1. **UK origins:** BHX, MAN, LHR and LGW (all enabled ones, or the ones ticked under "More options").
 2. **Stage 1** (in parallel):
    - **A. Through tickets:** UK airport → destination, protected connections only (`allow_self_transfer: false`).
    - **B. International legs:** UK airport → each Indian hub that isn't known to lack flights to the destination (`hub_routes`).
@@ -47,7 +47,7 @@ All tables have row-level security enabled with no policies, so the public anon 
    - Only on the dates the connection window can reach: the arrival date and the day after.
    - Hubs with no flights are recorded in `hub_routes` and skipped for 30 days.
 5. **Combine** each international leg with each domestic leg where:
-   - buffer ≥ minimum (3h 30m by default, 3–6h on the form), plus a terminal change if any (DEL T3→T1 and BOM T2→T1 add 45m);
+   - buffer ≥ the "time to change from international to domestic flight" on the form (default 3h, 1–12h allowed), plus a terminal change if any (DEL T3→T1 and BOM T2→T1 add 45m);
    - buffer ≤ 14h, or ≤ 24h with "Allow an overnight stop", which adds a hotel estimate.
 6. **Cost** = ground + all fares + bag fees + likely excess baggage + hotel. **Time** = leave home → final arrival. Leaving home is set by your airport arrival buffer (`uk_airport_arrival_mins`, default 3h) plus the ground travel time.
 7. **Ranking** shows the cheapest and fastest options, plus the top 10 by "best value" (a price-vs-time slider). Options with an unknown bag price rank lower.
@@ -75,6 +75,18 @@ The client is generated from `spec/ignav-openapi.json`. To regenerate: `npm run 
 - **Domestic coverage is incomplete:** e.g. Ignav has no direct CCU → GAU flights and few IndiGo flights. That's why domestic searches allow 1 stop by default.
 - **Bag data:** most domestic fares come back with no bag info. These are assumed to include 1 × 15kg bag and labelled "estimated". International fares that list only `carry_on` count as "bag price unknown".
 - **Unconfirmed prices:** a fare with `price.status = "unverified"` gets a "Price not confirmed" badge.
+
+## Getting to the airport (train vs cab)
+
+There's no free API for live UK train fares or taxi quotes, so you enter your own:
+
+- After a search, the **"Getting to the airport"** panel has, for each UK airport:
+  - a train fare **per person** and journey time;
+  - a cab price **for the whole car** and journey time.
+- Times can be typed as `80`, `1:20` or `1.5` (hours).
+- **Use** picks the cheaper option for your group, or forces train or cab. For example, choose cab for a very early flight when no trains are running.
+- Totals, door-to-door times and the ranking update straight away, with no new Ignav calls. Each route card shows the other option and the price difference.
+- Your entries are saved in your browser, per home area. The first time, they're filled in from the `ground_access` defaults in Admin.
 
 ## Admin
 

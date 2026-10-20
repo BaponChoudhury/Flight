@@ -47,8 +47,8 @@ export function validateRequest(r: SearchRequest): string | null {
   if (!(r.children >= 0 && r.children <= 8)) return "Children must be between 0 and 8.";
   if (!(r.bags >= 0 && r.bags <= 3)) return "Checked bags must be between 0 and 3 per person.";
   if (!(r.bagKg >= 0 && r.bagKg <= 32)) return "Bag weight must be between 0 and 32 kg.";
-  if (r.minBufferMins != null && (r.minBufferMins < 180 || r.minBufferMins > 360))
-    return "Connection buffer must be between 3 and 6 hours.";
+  if (r.minBufferMins != null && !(r.minBufferMins >= 60 && r.minBufferMins <= 720))
+    return "Time to change flights must be between 1 and 12 hours.";
   if (r.flexDays !== 0 && r.flexDays !== 1) return "Flexibility must be 0 or ±1 day.";
   return null;
 }
@@ -129,12 +129,13 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
   const ukAirports = config.airports
     .filter((a) => a.role === "uk_origin" && a.enabled)
     .map((a) => a.iata)
-    .filter((a) => !req.ukAirports?.length || req.ukAirports.includes(a))
-    .filter((a) => {
-      if (groundFor.has(a)) return true;
-      notes.push(`Skipped ${a}: no ground travel set up from ${req.originArea} (add it in Admin → ground_access).`);
-      return false;
-    });
+    .filter((a) => !req.ukAirports?.length || req.ukAirports.includes(a));
+  // Airports without a configured price still get searched; the user enters
+  // their own train/cab prices on the results page.
+  for (const a of ukAirports) {
+    if (!groundFor.has(a))
+      groundFor.set(a, { origin_area: req.originArea, airport: a, mode: "not set", cost_gbp: 0, per_person: false, duration_mins: 0, notes: "" });
+  }
   const allHubs = config.airports.filter((a) => a.role === "india_hub" && a.enabled).map((a) => a.iata);
   const hubs = hubsToSearch(allHubs, req.dest, config.hubRoutes, s.hub_route_recheck_days);
   const skippedHubs = allHubs.filter((h) => !hubs.includes(h) && h !== req.dest);
