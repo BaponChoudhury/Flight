@@ -1,0 +1,215 @@
+// Persistence. Uses Supabase when SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are
+// set; otherwise an in-process memory store (fine for local dev, not durable).
+
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { defaultConfig, DEFAULT_SETTINGS } from "@/lib/config/defaults";
+import type { AppConfig, CallLogEntry, HubRoute, SearchRequest, Settings } from "@/lib/types";
+
+export const CONFIG_TABLES = {
+  airports: { key: "airports", pk: ["iata"] },
+  ground_access: { key: "groundAccess", pk: ["origin_area", "airport", "mode"] },
+  bag_fees: { key: "bagFees", pk: ["airline_code", "route_type", "bag_kg"] },
+  airline_bag_defaults: { key: "airlineBagDefaults", pk: ["airline_code", "route_type"] },
+  airline_terminals: { key: "airlineTerminals", pk: ["airport", "airline_code", "route_type"] },
+  terminal_rules: { key: "terminalRules", pk: ["airport", "from_terminal", "to_terminal"] },
+  hub_routes: { key: "hubRoutes", pk: ["hub", "dest"] },
+} as const;
+export type ConfigTable = keyof typeof CONFIG_TABLES;
+type Row = Record<string, unknown>;
+
+export interface CacheRow {
+  cache_key: string;
+  provider: string;
+  endpoint: string;
+  request: unknown;
+  raw_response: unknown;
+  fetched_at: string;
+  expires_at: string;
+}
+
+export interface SearchLog {
+  id: string;
+  params: SearchRequest;
+  paid_calls: number;
+  cache_hits: number;
+  failed_calls: number;
+  result_count: number;
+  duration_ms: number;
+}
+
+export interface Store {
+  kind: "supabase" | "memory";
+  loadConfig(): Promise<AppConfig>;
+  getTable(table: ConfigTable): Promise<Row[]>;
+  replaceTable(table: ConfigTable, rows: Row[]): Promise<void>;
+  saveSettings(settings: Settings): Promise<void>;
+  upsertHubRoutes(rows: HubRoute[]): Promise<void>;
+  getCache(key: string): Promise<CacheRow | null>;
+  putCache(row: CacheRow): Promise<void>;
+  logSearch(search: SearchLog, calls: CallLogEntry[]): Promise<void>;
+}
+
+function mergeSettings(rows: { key: string; value: unknown }[]): Settings {
+  const s = structuredClone(DEFAULT_SETTINGS) as unknown as Record<string, unknown>;
+  for (const r of rows) if (r.key in s) s[r.key] = r.value;
+  return s as unknown as Settings;
+}
+
+// ---------- Memory ----------
+
+class MemoryStore implements Store {
+  kind = "memory" as const;
+  private config = defaultConfig();
+  private cache = new Map<string, CacheRow>();
+
+  async loadConfig() {
+    return structuredClone(this.config);
+  }
+  async getTable(table: ConfigTable) {
+    return structuredClone(this.config[CONFIG_TABLES[table].key]) as unknown as Row[];
+  }
+  async replaceTable(table: ConfigTable, rows: Row[]) {
+    (this.config as unknown as Record<string, unknown>)[CONFIG_TABLES[table].key] = structuredClone(rows);
+  }
+  async saveSettings(settings: Settings) {
+    this.config.settings = structuredClone(settings);
+  }
+  async upsertHubRoutes(rows: HubRoute[]) {
+    for (const r of rows) {
+      const i = this.config.hubRoutes.findIndex((h) => h.hub === r.hub && h.dest === r.dest);
+      if (i >= 0) this.config.hubRoutes[i] = r;
+      else this.config.hubRoutes.push(r);
+    }
+  }
+  async getCache(key: string) {
+    return this.cache.get(key) ?? null;
+  }
+  async putCache(row: CacheRow) {
+    this.cache.set(row.cache_key, row);
+  }
+  async logSearch(search: SearchLog, calls: CallLogEntry[]) {
+    console.info(
+      `[search ${search.id}] paid=${search.paid_calls} cacheHits=${search.cache_hits} failed=${search.failed_calls} results=${search.result_count} ${search.duration_ms}ms (${calls.length} calls)`,
+    );
+  }
+}
+
+// ---------- Supabase ----------
+
+class SupabaseStore implements Store {
+  kind = "supabase" as const;
+  constructor(private db: SupabaseClient) {}
+
+  private async select(table: string): Promise<Row[]> {
+    const { data, error } = await this.db.from(table).select("*");
+    if (error) throw new Error(`Supabase ${table}: ${error.message}`);
+    return data ?? [];
+  }
+
+  async loadConfig(): Promise<AppConfig> {
+    const [airports, ground, bagFees, bagDefaults, terminals, rules, hubRoutes, settings] = await Promise.all([
+      this.select("airports"),
+      this.select("ground_access"),
+      this.select("bag_fees"),
+      this.select("airline_bag_defaults"),
+      this.select("airline_terminals"),
+      this.select("terminal_rules"),
+      this.select("hub_routes"),
+      this.select("settings"),
+    ]);
+    const num = <T extends Row>(rows: Row[], fields: string[]) =>
+      rows.map((r) => {
+        const o = { ...r };
+        for (const f of fields) if (o[f] != null) o[f] = Number(o[f]);
+        return o as T;
+      });
+    return {
+      airports: airports as unknown as AppConfig["airports"],
+      groundAccess: num(ground, ["cost_gbp", "duration_mins"]) as unknown as AppConfig["groundAccess"],
+      bagFees: num(bagFees, ["bag_kg", "fee_gbp"]) as unknown as AppConfig["bagFees"],
+      airlineBagDefaults: num(bagDefaults, ["included_pieces", "included_kg", "excess_per_kg_gbp"]) as unknown as AppConfig["airlineBagDefaults"],
+      airlineTerminals: terminals as unknown as AppConfig["airlineTerminals"],
+      terminalRules: num(rules, ["extra_mins"]) as unknown as AppConfig["terminalRules"],
+      hubRoutes: hubRoutes as unknown as AppConfig["hubRoutes"],
+      settings: mergeSettings(settings as { key: string; value: unknown }[]),
+    };
+  }
+
+  async getTable(table: ConfigTable) {
+    return this.select(table);
+  }
+
+  async replaceTable(table: ConfigTable, rows: Row[]) {
+    // Small config tables: delete-all then insert keeps the admin editor simple.
+    const pk = CONFIG_TABLES[table].pk[0];
+    const del = await this.db.from(table).delete().not(pk, "is", null);
+    if (del.error) throw new Error(`Supabase ${table}: ${del.error.message}`);
+    if (rows.length) {
+      const ins = await this.db.from(table).insert(rows);
+      if (ins.error) throw new Error(`Supabase ${table}: ${ins.error.message}`);
+    }
+  }
+
+  async saveSettings(settings: Settings) {
+    const rows = Object.entries(settings).map(([key, value]) => ({ key, value }));
+    const { error } = await this.db.from("settings").upsert(rows);
+    if (error) throw new Error(`Supabase settings: ${error.message}`);
+  }
+
+  async upsertHubRoutes(rows: HubRoute[]) {
+    if (!rows.length) return;
+    const { error } = await this.db.from("hub_routes").upsert(rows);
+    if (error) console.warn(`hub_routes upsert failed: ${error.message}`);
+  }
+
+  async getCache(key: string) {
+    const { data, error } = await this.db.from("fare_cache").select("*").eq("cache_key", key).maybeSingle();
+    if (error) {
+      console.warn(`fare_cache read failed: ${error.message}`);
+      return null;
+    }
+    return (data as CacheRow | null) ?? null;
+  }
+
+  async putCache(row: CacheRow) {
+    const { error } = await this.db.from("fare_cache").upsert(row);
+    if (error) console.warn(`fare_cache write failed: ${error.message}`);
+  }
+
+  async logSearch(search: SearchLog, calls: CallLogEntry[]) {
+    const s = await this.db.from("searches").insert(search);
+    if (s.error) return console.warn(`searches insert failed: ${s.error.message}`);
+    if (!calls.length) return;
+    const c = await this.db.from("api_calls").insert(
+      calls.map((c) => ({
+        search_id: search.id,
+        provider: c.provider,
+        endpoint: c.endpoint,
+        label: c.label,
+        cache_hit: c.cacheHit,
+        ok: c.ok,
+        http_status: c.httpStatus,
+        latency_ms: c.latencyMs,
+        error: c.error ?? null,
+      })),
+    );
+    if (c.error) console.warn(`api_calls insert failed: ${c.error.message}`);
+  }
+}
+
+export function createMemoryStore(): Store {
+  return new MemoryStore();
+}
+
+const g = globalThis as unknown as { __flightStore?: Store };
+
+export function getStore(): Store {
+  if (g.__flightStore) return g.__flightStore;
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  g.__flightStore =
+    url && key
+      ? new SupabaseStore(createClient(url, key, { auth: { persistSession: false } }))
+      : new MemoryStore();
+  return g.__flightStore;
+}

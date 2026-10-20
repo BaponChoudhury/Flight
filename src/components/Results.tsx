@@ -1,0 +1,227 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { rankOptions } from "@/lib/engine/rules";
+import { formatDuration, formatLocalDay, formatLocalTime } from "@/lib/engine/time";
+import type { Badge, BookingLink, FlightLeg, RouteOption, SearchRequest, SearchResponse, Settings } from "@/lib/types";
+
+const gbp = (n: number) => `£${n.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`;
+
+const BADGE_STYLE: Record<Badge, string> = {
+  "Separate tickets": "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200",
+  "Bags included": "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200",
+  "Bag price unknown": "bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200",
+  "Terminal change": "bg-violet-100 text-violet-900 dark:bg-violet-900/40 dark:text-violet-200",
+  Overnight: "bg-indigo-100 text-indigo-900 dark:bg-indigo-900/40 dark:text-indigo-200",
+  "Excess baggage risk": "bg-rose-100 text-rose-900 dark:bg-rose-900/40 dark:text-rose-200",
+  "Price not confirmed": "bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200",
+};
+
+type Tz = Record<string, string>;
+const UK_TZ = "Europe/London";
+const when = (utc: string, tz: string) => `${formatLocalTime(utc, tz)} ${formatLocalDay(utc, tz)}`;
+
+function routeLabel(o: RouteOption) {
+  return o.kind === "split" ? `${o.ukAirport} → ${o.hub} → ${o.dest}` : `${o.ukAirport} → ${o.dest}`;
+}
+
+function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest }) {
+  const it = leg.itinerary;
+  const [links, setLinks] = useState<BookingLink[] | null>(null);
+  const [state, setState] = useState<"idle" | "loading" | "error">("idle");
+  const [err, setErr] = useState("");
+  const via = it.segments.slice(0, -1).map((s) => s.dest);
+  const flights = it.segments.map((s) => `${s.carrier ?? ""}${s.flightNumber ?? ""}`).filter(Boolean).join(", ");
+  const airline = it.segments[0]?.carrierName ?? it.carrier ?? "Airline";
+
+  async function loadLinks() {
+    setState("loading");
+    const res = await fetch("/api/booking-links", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ providerRef: it.providerRef, adults: req.adults, children: req.children }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setErr(data.error ?? "Failed");
+      setState("error");
+      return;
+    }
+    setLinks(data.links);
+    setState("idle");
+  }
+
+  return (
+    <li className="relative border-l-2 border-sky-600 pl-4">
+      <p className="font-semibold">
+        ✈ {it.origin} {when(it.departUtc, tz[it.origin] ?? UK_TZ)} → {it.dest} {when(it.arriveUtc, tz[it.dest] ?? UK_TZ)}
+      </p>
+      <p className="text-sm text-slate-600 dark:text-slate-400">
+        {airline} · {flights} · {formatDuration(it.durationMins)} · {via.length ? `stops in ${via.join(", ")}` : "direct"}
+      </p>
+      <p className="text-sm">
+        Fare {gbp(it.price.totalGbp)}
+        {it.price.fxApprox && ` (converted from ${it.price.currency} ${it.price.amount.toFixed(0)})`} · {leg.bag.note}
+        {leg.bag.excessRisk && leg.bag.includedKg != null && (
+          <span className="text-rose-700 dark:text-rose-300"> · allowance usually {leg.bag.includedKg}kg per bag, yours are {req.bagKg}kg</span>
+        )}
+      </p>
+      <div className="mt-1">
+        {links === null ? (
+          <button type="button" onClick={loadLinks} disabled={state === "loading"} className="text-sm font-medium text-sky-700 underline dark:text-sky-400">
+            {state === "loading" ? "Getting booking links…" : "Get booking links"}
+          </button>
+        ) : links.length === 0 ? (
+          <p className="text-sm">No booking links available for this flight.</p>
+        ) : (
+          <ul className="space-y-1 text-sm">
+            {links.slice(0, 5).map((l, i) => (
+              <li key={i}>
+                <a href={l.url} target="_blank" rel="noopener noreferrer" className="text-sky-700 underline dark:text-sky-400">
+                  Book with {l.providerName}
+                </a>
+                {l.price && ` · ${l.price.currency} ${l.price.amount.toFixed(0)}`}
+                {!l.exactFlight && " (search page)"}
+              </li>
+            ))}
+          </ul>
+        )}
+        {state === "error" && <p className="text-sm text-rose-700">{err}</p>}
+      </div>
+    </li>
+  );
+}
+
+function OptionCard({ o, tz, req, highlight }: { o: RouteOption; tz: Tz; req: SearchRequest; highlight?: string }) {
+  const [open, setOpen] = useState(false);
+  const destTz = tz[o.dest] ?? "Asia/Kolkata";
+  const c = o.connection;
+  return (
+    <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <button type="button" className="w-full text-left" onClick={() => setOpen((x) => !x)} aria-expanded={open}>
+        {highlight && <p className="mb-1 text-xs font-bold uppercase tracking-wide text-sky-700 dark:text-sky-400">{highlight}</p>}
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-2xl font-bold">{gbp(o.costs.total)}{o.costs.bagsUnknown && "+"}</span>
+          <span className="text-right text-base font-medium">{formatDuration(o.totalMins)} door to door</span>
+        </div>
+        <p className="mt-1 text-base">{routeLabel(o)}</p>
+        <p className="text-sm text-slate-600 dark:text-slate-400">
+          Leave home {when(o.leaveHomeUtc, UK_TZ)} · arrive {when(o.arriveUtc, destTz)}
+        </p>
+        {o.badges.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {o.badges.map((b) => <span key={b} className={`rounded-full px-2 py-0.5 text-xs font-medium ${BADGE_STYLE[b]}`}>{b}</span>)}
+          </div>
+        )}
+        <p className="mt-2 text-sm font-medium text-sky-700 dark:text-sky-400">{open ? "Hide details" : "Show details"}</p>
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-4 border-t border-slate-200 pt-3 dark:border-slate-700">
+          {o.kind === "split" && (
+            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-900/30 dark:text-amber-100">
+              <strong>Separate tickets:</strong> if your first flight is late and you miss the second, the second airline doesn&apos;t have to help — you may need to buy a new ticket. You&apos;ll also collect your bags and check in again at {o.hub}.
+            </p>
+          )}
+          <ol className="space-y-3">
+            <li className="border-l-2 border-slate-400 pl-4">
+              <p className="font-semibold">🏠 Leave {req.originArea} {when(o.leaveHomeUtc, UK_TZ)}</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                {o.ground.mode} to {o.ukAirport}, about {formatDuration(o.ground.duration_mins)} · {gbp(o.costs.ground)}
+                {o.ground.notes && ` · ${o.ground.notes}`}
+              </p>
+            </li>
+            <LegBlock leg={o.legs[0]} tz={tz} req={req} />
+            {c && (
+              <li className="border-l-2 border-dashed border-amber-500 pl-4">
+                <p className="font-semibold">⏱ {formatDuration(c.bufferMins)} at {c.airport}</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Needs at least {formatDuration(c.minRequiredMins)}
+                  {c.terminalChange && ` including a terminal change (${c.terminalChange.from} → ${c.terminalChange.to})`}
+                  {c.overnight && (c.hotelGbp ? ` · overnight, hotel about ${gbp(c.hotelGbp)}` : " · overnight wait")}
+                </p>
+              </li>
+            )}
+            {o.legs.slice(1).map((l) => <LegBlock key={l.itinerary.providerRef} leg={l} tz={tz} req={req} />)}
+            <li className="border-l-2 border-emerald-600 pl-4">
+              <p className="font-semibold">📍 Arrive {o.dest} {when(o.arriveUtc, destTz)}</p>
+            </li>
+          </ol>
+
+          <table className="w-full text-sm">
+            <tbody>
+              <tr><td>Getting to {o.ukAirport}</td><td className="text-right">{gbp(o.costs.ground)}</td></tr>
+              {o.costs.fares.map((f, i) => (
+                <tr key={i}><td>Flight {o.legs[i].itinerary.origin} → {o.legs[i].itinerary.dest}</td><td className="text-right">{gbp(f)}</td></tr>
+              ))}
+              <tr><td>Checked bags</td><td className="text-right">{o.costs.bagsUnknown ? "unknown" : gbp(o.costs.bags)}</td></tr>
+              {o.costs.excessBaggage > 0 && <tr><td>Likely excess baggage (estimate)</td><td className="text-right">{gbp(o.costs.excessBaggage)}</td></tr>}
+              {o.costs.hotel > 0 && <tr><td>Hotel (estimate)</td><td className="text-right">{gbp(o.costs.hotel)}</td></tr>}
+              <tr className="font-bold"><td>Total, {req.adults + req.children} traveller{req.adults + req.children > 1 ? "s" : ""}</td><td className="text-right">{gbp(o.costs.total)}</td></tr>
+            </tbody>
+          </table>
+          <p className="text-xs text-slate-500">Price as of {formatLocalTime(o.priceAsOf, UK_TZ)} UK time. Fares change — check before booking.</p>
+        </div>
+      )}
+    </article>
+  );
+}
+
+export function Results({ data, req, settings }: { data: SearchResponse; req: SearchRequest; settings: Settings }) {
+  const [priceWeight, setPriceWeight] = useState(0.6);
+  const ranked = useMemo(() => rankOptions(data.options, priceWeight, settings), [data.options, priceWeight, settings]);
+  const tz = data.airportTz;
+  const s = data.stats;
+  const asOf = data.options.map((o) => o.priceAsOf).sort()[0];
+
+  return (
+    <section className="space-y-4">
+      <div className="rounded-lg bg-slate-100 p-3 text-sm dark:bg-slate-800">
+        <p>
+          <strong>{data.options.length}</strong> options · <strong>{s.paidCalls}</strong> Ignav calls used · {s.cacheHits} from cache
+          {s.failedCalls > 0 && ` · ${s.failedCalls} failed`} · {(s.durationMs / 1000).toFixed(1)}s
+        </p>
+        {asOf && <p>Prices as of {formatLocalTime(asOf, UK_TZ)} UK time (cached up to {settings.cache_ttl_mins / 60}h).</p>}
+        {data.storage === "memory" && <p className="text-amber-800 dark:text-amber-300">Supabase not connected: cache resets when the server restarts.</p>}
+      </div>
+
+      {data.errors.length > 0 && (
+        <div role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-900 dark:bg-rose-900/30 dark:text-rose-100">
+          <p className="font-semibold">Some searches didn&apos;t work:</p>
+          <ul className="list-disc pl-5">{data.errors.map((e) => <li key={e}>{e}</li>)}</ul>
+        </div>
+      )}
+      {data.notes.length > 0 && (
+        <details className="text-sm text-slate-600 dark:text-slate-400">
+          <summary>Search notes ({data.notes.length})</summary>
+          <ul className="list-disc pl-5">{data.notes.map((n) => <li key={n}>{n}</li>)}</ul>
+        </details>
+      )}
+
+      {data.options.length > 0 && (
+        <>
+          <div className="grid gap-3">
+            {ranked.cheapest && <OptionCard o={ranked.cheapest} tz={tz} req={req} highlight="Cheapest" />}
+            {ranked.fastest && ranked.fastest !== ranked.cheapest && <OptionCard o={ranked.fastest} tz={tz} req={req} highlight="Fastest" />}
+          </div>
+
+          <div>
+            <label htmlFor="weight" className="block text-sm font-medium">
+              Best value: {priceWeight >= 0.5 ? `mostly price (${Math.round(priceWeight * 100)}%)` : `mostly time (${Math.round((1 - priceWeight) * 100)}%)`}
+            </label>
+            <div className="flex items-center gap-2 text-sm">
+              <span>Time</span>
+              <input id="weight" type="range" min={0} max={1} step={0.05} value={priceWeight} onChange={(e) => setPriceWeight(Number(e.target.value))} className="flex-1" />
+              <span>Price</span>
+            </div>
+          </div>
+
+          <h2 className="text-lg font-semibold">Top 10 by best value</h2>
+          <div className="grid gap-3">
+            {ranked.top.map((o, i) => <OptionCard key={o.id} o={o} tz={tz} req={req} highlight={i === 0 ? "Best value" : undefined} />)}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
