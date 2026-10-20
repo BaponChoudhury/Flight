@@ -1,4 +1,4 @@
-import type { BookingLink, CallLogEntry, NormalisedItinerary, NormalisedRoundTrip, ProviderId, Settings } from "@/lib/types";
+import type { BookingKey, BookingLink, CallLogEntry, NormalisedItinerary, NormalisedRoundTrip, ProviderId, Settings } from "@/lib/types";
 
 export interface SearchFilters {
   adults: number;
@@ -58,7 +58,8 @@ export interface FlightProvider {
     filters: SearchFilters,
     ctx: CallContext,
   ): Promise<NormalisedRoundTrip[]>;
-  getBookingLinks(providerRef: string, filters: SearchFilters, ctx: CallContext): Promise<BookingLink[]>;
+  /** `key` lets the provider find the itinerary again by its flights if `providerRef` has expired. */
+  getBookingLinks(providerRef: string, filters: SearchFilters, ctx: CallContext, key?: BookingKey): Promise<BookingLink[]>;
 }
 
 export class ProviderError extends Error {

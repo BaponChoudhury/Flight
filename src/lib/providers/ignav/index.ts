@@ -4,7 +4,7 @@
 import type { components } from "./schema";
 import type { CallContext, FlightProvider, SearchFilters } from "@/lib/providers/types";
 import { ProviderError } from "@/lib/providers/types";
-import type { BookingLink, NormalisedItinerary, NormalisedRoundTrip, NormalisedSegment, Settings } from "@/lib/types";
+import type { BookingKey, BookingLink, NormalisedItinerary, NormalisedRoundTrip, NormalisedSegment, Settings } from "@/lib/types";
 import { minutesBetween, parseInstant } from "@/lib/engine/time";
 
 type S = components["schemas"];
@@ -159,6 +159,19 @@ function normaliseLeg(
     observedAt: raw.observed_at ?? null,
     fetchedAt: meta.fetchedAt,
     fromCache: meta.fromCache,
+    bookingKey: keyOf(leg),
+  };
+}
+
+function keyOf(leg: S["LegModel"]): BookingKey {
+  const first = leg.segments[0];
+  const last = leg.segments[leg.segments.length - 1];
+  return {
+    origin: first.departure_airport,
+    dest: last.arrival_airport,
+    date: first.departure_time_local.slice(0, 10),
+    carrier: first.marketing_carrier_code,
+    flightNumber: first.flight_number,
   };
 }
 
@@ -190,12 +203,31 @@ export function normaliseRoundTrip(
   for (const it of raw.itineraries ?? []) {
     try {
       if (!it.inbound) throw new Error("no inbound");
-      trips.push({ out: normaliseLeg(it, it.outbound, true, raw, meta, settings), back: normaliseLeg(it, it.inbound, false, raw, meta, settings) });
+      const out = normaliseLeg(it, it.outbound, true, raw, meta, settings);
+      const back = normaliseLeg(it, it.inbound, false, raw, meta, settings);
+      const r = keyOf(it.inbound);
+      out.bookingKey = { ...out.bookingKey!, ret: { date: r.date, carrier: r.carrier, flightNumber: r.flightNumber } };
+      trips.push({ out, back });
     } catch {
       skipped++;
     }
   }
   return { trips, skipped };
+}
+
+export function bookingKeyRequest(key: BookingKey, filters: SearchFilters, settings: Settings): IgnavBookingLinksRequest {
+  return {
+    origin: key.origin,
+    destination: key.dest,
+    departure_date: key.date,
+    outbound_carrier_code: key.carrier,
+    outbound_flight_number: key.flightNumber,
+    ...(key.ret ? { return_date: key.ret.date, inbound_carrier_code: key.ret.carrier, inbound_flight_number: key.ret.flightNumber } : {}),
+    adults: filters.adults,
+    children: filters.children,
+    infants_on_lap: filters.infants ?? 0,
+    market: settings.market,
+  };
 }
 
 export function normaliseBookingLinks(raw: IgnavBookingLinksResponse): BookingLink[] {
@@ -250,21 +282,24 @@ export const ignavProvider: FlightProvider = {
     ).trips;
   },
 
-  async getBookingLinks(providerRef, filters, ctx) {
-    const body: IgnavBookingLinksRequest = {
-      ignav_id: providerRef,
-      adults: filters.adults,
-      children: filters.children,
-      infants_on_lap: filters.infants ?? 0,
-      market: ctx.settings.market,
+  async getBookingLinks(providerRef, filters, ctx, key) {
+    const fetchLinks = async (body: IgnavBookingLinksRequest, label: string) => {
+      const res = await ctx.call({
+        provider: "ignav",
+        endpoint: "/api/fares/booking-links",
+        body,
+        label,
+        fetcher: () => ignavPost<IgnavBookingLinksResponse>("/api/fares/booking-links", body),
+      });
+      return normaliseBookingLinks(res.raw as IgnavBookingLinksResponse);
     };
-    const res = await ctx.call({
-      provider: "ignav",
-      endpoint: "/api/fares/booking-links",
-      body,
-      label: `booking links ${providerRef.slice(0, 12)}`,
-      fetcher: () => ignavPost<IgnavBookingLinksResponse>("/api/fares/booking-links", body),
-    });
-    return normaliseBookingLinks(res.raw as IgnavBookingLinksResponse);
+    try {
+      // An ignav_id already encodes passengers and market; Ignav rejects those fields alongside it.
+      return await fetchLinks({ ignav_id: providerRef }, `booking links ${providerRef.slice(0, 12)}`);
+    } catch (err) {
+      // ignav_ids expire; our results can be cached for up to 2h. Look the trip up by its flights instead.
+      if (!key || !(err instanceof ProviderError) || !(err.httpStatus === 404 || /no itinerary matched/i.test(err.message))) throw err;
+      return fetchLinks(bookingKeyRequest(key, filters, ctx.settings), `booking links ${key.origin}-${key.dest} ${key.carrier}${key.flightNumber}`);
+    }
   },
 };

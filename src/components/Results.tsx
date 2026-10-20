@@ -40,7 +40,7 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
     const res = await fetch("/api/booking-links", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ providerRef: it.providerRef, adults: req.adults, children: req.children, infants: req.infants ?? 0 }),
+      body: JSON.stringify({ providerRef: it.providerRef, bookingKey: it.bookingKey, adults: req.adults, children: req.children, infants: req.infants ?? 0 }),
     });
     const data = await res.json();
     if (!res.ok) {

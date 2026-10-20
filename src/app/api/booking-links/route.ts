@@ -2,17 +2,19 @@ import { NextResponse } from "next/server";
 import { createCallContext } from "@/lib/engine/calls";
 import { ignavProvider } from "@/lib/providers/ignav";
 import { getStore } from "@/lib/store";
+import type { BookingKey } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 // Fetched lazily, only when the user taps "Get booking links" (each call is billed).
 export async function POST(request: Request) {
-  const { providerRef, adults, children, infants } = (await request.json().catch(() => ({}))) as {
+  const { providerRef, adults, children, infants, bookingKey } = (await request.json().catch(() => ({}))) as {
     providerRef?: string;
     adults?: number;
     children?: number;
     infants?: number;
+    bookingKey?: BookingKey;
   };
   if (!providerRef || !adults) return NextResponse.json({ error: "Missing itinerary." }, { status: 400 });
   const store = getStore();
@@ -23,6 +25,7 @@ export async function POST(request: Request) {
       providerRef,
       { adults, children: children ?? 0, infants: infants ?? 0, allowSelfTransfer: false },
       ctx,
+      bookingKey,
     );
     return NextResponse.json({ links, fromCache: ctx.log[0]?.cacheHit ?? false });
   } catch (err) {

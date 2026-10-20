@@ -67,3 +67,47 @@ describe("Ignav normalisation", () => {
     expect(it0.arriveUtc).toBe("2026-12-10T20:35:00.000Z"); // 00:35 in Dubai (+4)
   });
 });
+
+describe("booking links", () => {
+  it("sends only the ignav_id (Ignav rejects passenger/market fields with it)", async () => {
+    const { ignavProvider } = await import("@/lib/providers/ignav");
+    let sent: unknown;
+    const ctx = {
+      settings: defaultConfig().settings,
+      log: [],
+      call: async (req: { body: unknown }) => {
+        sent = req.body;
+        return { raw: { itinerary: {}, booking_options: [] }, fetchedAt: "x", fromCache: false };
+      },
+    };
+    await ignavProvider.getBookingLinks("abc123", { adults: 2, children: 1, infants: 1, allowSelfTransfer: false }, ctx as never);
+    expect(sent).toEqual({ ignav_id: "abc123" });
+  });
+
+  it("falls back to the flight details when the ignav_id has expired", async () => {
+    const { ignavProvider } = await import("@/lib/providers/ignav");
+    const { ProviderError } = await import("@/lib/providers/types");
+    const sent: unknown[] = [];
+    const ctx = {
+      settings: defaultConfig().settings,
+      log: [],
+      call: async (req: { body: { ignav_id?: string } }) => {
+        sent.push(req.body);
+        if (req.body.ignav_id) throw new ProviderError("No itinerary matched the provided flight details.", 404);
+        return { raw: { itinerary: {}, booking_options: [{ legs: ["outbound"], links: [{ provider_name: "Etihad", url: "https://x" }] }] }, fetchedAt: "x", fromCache: false };
+      },
+    };
+    const key = { origin: "MAN", dest: "BLR", date: "2026-12-10", carrier: "EY", flightNumber: "78", ret: { date: "2027-01-05", carrier: "EY", flightNumber: "273" } };
+    const links = await ignavProvider.getBookingLinks("old", { adults: 2, children: 0, infants: 1, allowSelfTransfer: false }, ctx as never, key);
+    expect(links.map((l) => l.providerName)).toEqual(["Etihad"]);
+    expect(sent[1]).toMatchObject({
+      origin: "MAN", destination: "BLR", departure_date: "2026-12-10", outbound_carrier_code: "EY", outbound_flight_number: "78",
+      return_date: "2027-01-05", inbound_carrier_code: "EY", inbound_flight_number: "273", adults: 2, infants_on_lap: 1, market: "GB",
+    });
+  });
+
+  it("records the flight details on normalised itineraries", () => {
+    const [it0] = normaliseOneWay(raw, { fetchedAt: "x", fromCache: false, passengers: 2 }, defaultConfig().settings).itineraries;
+    expect(it0.bookingKey).toEqual({ origin: "MAN", dest: "AUH", date: "2026-12-10", carrier: "EY", flightNumber: "16" });
+  });
+});

@@ -138,6 +138,17 @@ export interface NormalisedItinerary {
   observedAt: string | null;
   fetchedAt: string;
   fromCache: boolean;
+  /** How to find this whole Ignav itinerary again by flight details once the ignav_id expires. */
+  bookingKey?: BookingKey;
+}
+
+export interface BookingKey {
+  origin: string;
+  dest: string;
+  date: string; // local departure date
+  carrier: string | null; // first flight's marketing carrier
+  flightNumber: string | null;
+  ret?: { date: string; carrier: string | null; flightNumber: string | null };
 }
 
 /** A return fare: `out` carries the whole price, `back` has price 0 (included). Same providerRef. */
