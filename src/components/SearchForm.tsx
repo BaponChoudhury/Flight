@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { INDIA_AIRPORTS, indiaLabel, LONDON, parseIndiaDestination, UK_AIRPORTS, type NearbyAirport } from "@/lib/config/places";
+import { LONDON, UK_AIRPORTS, type NearbyAirport } from "@/lib/config/places";
+import { AirportPicker } from "./AirportPicker";
 import type { AppConfig, SearchRequest } from "@/lib/types";
 
 const field = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base dark:border-slate-600 dark:bg-slate-800";
@@ -25,7 +26,7 @@ export function SearchForm({
   onSearch: (req: SearchRequest) => void;
 }) {
   const [from, setFrom] = useState("");
-  const [to, setTo] = useState(indiaLabel("GAU"));
+  const [dest, setDest] = useState<string | null>("GAU");
   const [located, setLocated] = useState<{ name: string; airports: NearbyAirport[] } | null>(null);
   const [locating, setLocating] = useState(false);
   const [locateMsg, setLocateMsg] = useState("");
@@ -79,9 +80,8 @@ export function SearchForm({
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    const dest = parseIndiaDestination(to);
     if (!from.trim()) return setFormError("Enter where you're travelling from.");
-    if (!dest) return setFormError("Pick a destination from the list, or type its 3-letter airport code.");
+    if (!dest) return setFormError("Pick a destination from the suggestions, or type its 3-letter airport code.");
     if (!airports.length) return setFormError("Pick at least one UK airport.");
     if (airports.length > 5) return setFormError("Pick at most 5 UK airports (each one adds searches).");
     if ((req.infants ?? 0) > req.adults) return setFormError("Each infant needs an adult (one infant per adult).");
@@ -150,10 +150,13 @@ export function SearchForm({
 
       <div>
         <label className={label} htmlFor="to">To (airport in India)</label>
-        <input id="to" list="india-airports" className={field} placeholder="e.g. Guwahati" value={to} onChange={(e) => setTo(e.target.value)} onFocus={(e) => e.target.select()} required />
-        <datalist id="india-airports">
-          {INDIA_AIRPORTS.map((a) => <option key={a.code} value={`${a.city} (${a.code})`} />)}
-        </datalist>
+        <AirportPicker
+          id="to"
+          country="IN"
+          placeholder="Start typing a city, e.g. Guwahati"
+          initial={{ code: "GAU", city: "Guwahati", name: "Lokpriya Gopinath Bordoloi International Airport", country: "IN", lat: 0, lon: 0 }}
+          onChange={setDest}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3">

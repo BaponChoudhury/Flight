@@ -38,45 +38,11 @@ export const UK_AIRPORTS: UkAirport[] = [
   { code: "INV", name: "Inverness", lat: 57.5425, lon: -4.0475, suggest: false },
 ];
 
-export interface IndiaAirport {
-  code: string;
-  city: string;
-}
-
-export const INDIA_AIRPORTS: IndiaAirport[] = [
-  { code: "GAU", city: "Guwahati" }, { code: "IXB", city: "Bagdogra (Siliguri)" }, { code: "DIB", city: "Dibrugarh" },
-  { code: "IMF", city: "Imphal" }, { code: "IXA", city: "Agartala" }, { code: "JRH", city: "Jorhat" },
-  { code: "IXS", city: "Silchar" }, { code: "AJL", city: "Aizawl" }, { code: "DMU", city: "Dimapur" },
-  { code: "SHL", city: "Shillong" }, { code: "IXI", city: "Lilabari (North Lakhimpur)" }, { code: "TEZ", city: "Tezpur" },
-  { code: "HGI", city: "Itanagar" }, { code: "DEL", city: "Delhi" }, { code: "BOM", city: "Mumbai" },
-  { code: "BLR", city: "Bengaluru" }, { code: "MAA", city: "Chennai" }, { code: "CCU", city: "Kolkata" },
-  { code: "HYD", city: "Hyderabad" }, { code: "AMD", city: "Ahmedabad" }, { code: "COK", city: "Kochi" },
-  { code: "PNQ", city: "Pune" }, { code: "GOI", city: "Goa (Dabolim)" }, { code: "GOX", city: "Goa (Mopa)" },
-  { code: "TRV", city: "Thiruvananthapuram" }, { code: "CCJ", city: "Kozhikode" }, { code: "CNN", city: "Kannur" },
-  { code: "IXE", city: "Mangaluru" }, { code: "IXM", city: "Madurai" }, { code: "TRZ", city: "Tiruchirappalli" },
-  { code: "CJB", city: "Coimbatore" }, { code: "VTZ", city: "Visakhapatnam" }, { code: "VGA", city: "Vijayawada" },
-  { code: "TIR", city: "Tirupati" }, { code: "BBI", city: "Bhubaneswar" }, { code: "PAT", city: "Patna" },
-  { code: "GAY", city: "Gaya" }, { code: "DBR", city: "Darbhanga" }, { code: "IXR", city: "Ranchi" },
-  { code: "LKO", city: "Lucknow" }, { code: "VNS", city: "Varanasi" }, { code: "AYJ", city: "Ayodhya" },
-  { code: "GOP", city: "Gorakhpur" }, { code: "IXD", city: "Prayagraj" }, { code: "JAI", city: "Jaipur" },
-  { code: "UDR", city: "Udaipur" }, { code: "JDH", city: "Jodhpur" }, { code: "IDR", city: "Indore" },
-  { code: "BHO", city: "Bhopal" }, { code: "NAG", city: "Nagpur" }, { code: "RPR", city: "Raipur" },
-  { code: "IXC", city: "Chandigarh" }, { code: "ATQ", city: "Amritsar" }, { code: "IXJ", city: "Jammu" },
-  { code: "SXR", city: "Srinagar" }, { code: "IXL", city: "Leh" }, { code: "DED", city: "Dehradun" },
-  { code: "STV", city: "Surat" }, { code: "BDQ", city: "Vadodara" }, { code: "RAJ", city: "Rajkot" },
-  { code: "BHJ", city: "Bhuj" }, { code: "IXU", city: "Aurangabad" }, { code: "HBX", city: "Hubballi" },
-  { code: "IXG", city: "Belagavi" }, { code: "MYQ", city: "Mysuru" }, { code: "IXZ", city: "Port Blair" },
-  { code: "GWL", city: "Gwalior" }, { code: "JLR", city: "Jabalpur" }, { code: "DGH", city: "Deoghar" },
-];
-
 const UK_CODES = new Set(UK_AIRPORTS.map((a) => a.code));
-const INDIA_CODES = new Set(INDIA_AIRPORTS.map((a) => a.code));
 
-/** Timezone for airports we know about without asking the provider. */
+/** Timezone for UK airports; Indian airports fall back to Asia/Kolkata in the engine. */
 export function knownTz(code: string): string | null {
-  if (UK_CODES.has(code)) return "Europe/London";
-  if (INDIA_CODES.has(code)) return "Asia/Kolkata";
-  return null;
+  return UK_CODES.has(code) ? "Europe/London" : null;
 }
 
 export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -100,19 +66,4 @@ export function nearestUkAirports(lat: number, lon: number, count = 2, maxKm = 2
   const regional = withKm.filter((a) => a.code !== LONDON && a.km <= maxKm).sort((a, b) => a.km - b.km).slice(0, count);
   const london = withKm.find((a) => a.code === LONDON)!;
   return [...regional, london];
-}
-
-/** "Guwahati (GAU)", "gau" or "Guwahati" → "GAU". Null if we can't tell. */
-export function parseIndiaDestination(input: string): string | null {
-  const t = input.trim();
-  const inParens = /\(([A-Za-z]{3})\)\s*$/.exec(t);
-  if (inParens) return inParens[1].toUpperCase();
-  if (/^[A-Za-z]{3}$/.test(t)) return t.toUpperCase();
-  const byCity = INDIA_AIRPORTS.find((a) => a.city.toLowerCase() === t.toLowerCase() || a.city.toLowerCase().startsWith(`${t.toLowerCase()} (`));
-  return byCity?.code ?? null;
-}
-
-export function indiaLabel(code: string): string {
-  const a = INDIA_AIRPORTS.find((x) => x.code === code);
-  return a ? `${a.city} (${a.code})` : code;
 }

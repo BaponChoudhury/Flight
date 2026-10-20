@@ -45,6 +45,9 @@ export interface Store {
   saveSettings(settings: Settings): Promise<void>;
   upsertHubRoutes(rows: HubRoute[]): Promise<void>;
   getCache(key: string): Promise<CacheRow | null>;
+  /** Small key/value blobs (e.g. the compact airport index). */
+  getKv<T>(key: string): Promise<{ value: T; updated_at: string } | null>;
+  putKv(key: string, value: unknown): Promise<void>;
   putCache(row: CacheRow): Promise<void>;
   logSearch(search: SearchLog, calls: CallLogEntry[]): Promise<void>;
 }
@@ -61,6 +64,14 @@ class MemoryStore implements Store {
   kind = "memory" as const;
   private config = defaultConfig();
   private cache = new Map<string, CacheRow>();
+  private kv = new Map<string, { value: unknown; updated_at: string }>();
+
+  async getKv<T>(key: string) {
+    return (this.kv.get(key) as { value: T; updated_at: string } | undefined) ?? null;
+  }
+  async putKv(key: string, value: unknown) {
+    this.kv.set(key, { value, updated_at: new Date().toISOString() });
+  }
 
   async loadConfig() {
     return structuredClone(this.config);
@@ -160,6 +171,20 @@ class SupabaseStore implements Store {
     if (!rows.length) return;
     const { error } = await this.db.from("hub_routes").upsert(rows);
     if (error) console.warn(`hub_routes upsert failed: ${error.message}`);
+  }
+
+  async getKv<T>(key: string) {
+    const { data, error } = await this.db.from("kv").select("value, updated_at").eq("key", key).maybeSingle();
+    if (error) {
+      console.warn(`kv read failed (run supabase/migrations/0003_kv.sql?): ${error.message}`);
+      return null;
+    }
+    return (data as { value: T; updated_at: string } | null) ?? null;
+  }
+
+  async putKv(key: string, value: unknown) {
+    const { error } = await this.db.from("kv").upsert({ key, value, updated_at: new Date().toISOString() });
+    if (error) console.warn(`kv write failed: ${error.message}`);
   }
 
   async getCache(key: string) {

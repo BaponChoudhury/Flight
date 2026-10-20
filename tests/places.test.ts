@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { haversineKm, knownTz, nearestUkAirports, parseIndiaDestination } from "@/lib/config/places";
+import { haversineKm, knownTz, nearestUkAirports } from "@/lib/config/places";
 import { buildOneWayRequest } from "@/lib/providers/ignav";
 import { defaultConfig } from "@/lib/config/defaults";
 import { assessBags } from "@/lib/engine/rules";
@@ -26,19 +26,10 @@ describe("nearest UK airports", () => {
   });
 });
 
-describe("destination input", () => {
-  it("accepts a picked label, a code or a city name", () => {
-    expect(parseIndiaDestination("Guwahati (GAU)")).toBe("GAU");
-    expect(parseIndiaDestination("ixb")).toBe("IXB");
-    expect(parseIndiaDestination("Guwahati")).toBe("GAU");
-    expect(parseIndiaDestination("Bagdogra")).toBe("IXB");
-    expect(parseIndiaDestination("Somewhere")).toBeNull();
-  });
-
-  it("knows UK and Indian timezones", () => {
+describe("timezones", () => {
+  it("knows UK airports", () => {
     expect(knownTz("LON")).toBe("Europe/London");
     expect(knownTz("STN")).toBe("Europe/London");
-    expect(knownTz("IMF")).toBe("Asia/Kolkata");
     expect(knownTz("DXB")).toBeNull();
   });
 });
