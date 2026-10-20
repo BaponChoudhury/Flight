@@ -225,7 +225,9 @@ function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz:
                   </tr>
                 );
               })}
-              <tr><td>Checked bags</td><td className="text-right">{o.costs.bagsUnknown ? "unknown" : gbp(o.costs.bags)}</td></tr>
+              {req.bags > 0 && (
+                <tr><td>Checked bags ({req.bags} each)</td><td className="text-right">{o.costs.bagsUnknown ? "not confirmed" : "included in fares"}</td></tr>
+              )}
               {o.costs.excessBaggage > 0 && <tr><td>Likely excess baggage (estimate)</td><td className="text-right">{gbp(o.costs.excessBaggage)}</td></tr>}
               {o.costs.hotel > 0 && <tr><td>Hotel (estimate)</td><td className="text-right">{gbp(o.costs.hotel)}</td></tr>}
               <tr className="font-bold"><td>Total, {travellers(req)}</td><td className="text-right">{gbp(o.costs.total)}</td></tr>

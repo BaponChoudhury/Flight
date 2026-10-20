@@ -27,18 +27,9 @@ insert into ground_access (origin_area, airport, mode, cost_gbp, per_person, dur
   ('Stafford', 'LGW', 'train', 45, true, 190, 'placeholder: Stafford → Euston, then Thameslink/Gatwick Express')
 on conflict do nothing;
 
-insert into bag_fees (airline_code, route_type, bag_kg, fee_gbp, notes) values
-  ('*', 'international', 23, 70, 'placeholder: any airline without its own row'),
-  ('BA', 'international', 23, 65, 'placeholder: check airline site'),
-  ('VS', 'international', 23, 65, 'placeholder: check airline site'),
-  ('AI', 'international', 23, 60, 'placeholder: check airline site'),
-  ('6E', 'domestic', 15, 25, 'placeholder: prepaid extra bag'),
-  ('AI', 'domestic', 15, 25, 'placeholder: prepaid extra bag')
-on conflict do nothing;
-
 insert into airline_bag_defaults (airline_code, route_type, included_pieces, included_kg, excess_per_kg_gbp, notes) values
   ('*', 'international', null, 23, null, 'typical UK–India economy piece'),
-  ('*', 'domestic', 1, 15, 6, 'Indian domestic economy usually includes 1 × 15kg (assumed when Ignav gives no bag data); excess ≈ ₹600–700/kg (placeholder)'),
+  ('*', 'domestic', null, 15, null, 'Indian domestic economy is usually 15kg per bag (drives the excess-baggage warning only)'),
   ('AI', 'international', null, 23, null, 'placeholder: verify'),
   ('EK', 'international', null, 25, null, 'placeholder: weight concept, verify fare brand'),
   ('QR', 'international', null, 25, null, 'placeholder: weight concept, verify fare brand')

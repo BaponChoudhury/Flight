@@ -61,7 +61,7 @@ All tables have row-level security enabled with no policies, so the public anon 
 5. **Combine** each international leg with each domestic leg where:
    - buffer ≥ the "time to change from international to domestic flight" on the form (default 3h, 1–12h allowed), plus a terminal change if any (DEL T3→T1 and BOM T2→T1 add 45m);
    - buffer ≤ 14h, or ≤ 24h with "Allow an overnight stop", which adds a hotel estimate.
-6. **Cost** = ground + all fares + bag fees + likely excess baggage + hotel. **Time** = leave home → final arrival. Leaving home is set by your airport arrival buffer (`uk_airport_arrival_mins`, default 3h) plus the ground travel time.
+6. **Cost** = ground + all fares (bag-inclusive, from Ignav) + hotel. **Time** = leave home → final arrival. Leaving home is set by your airport arrival buffer (`uk_airport_arrival_mins`, default 3h) plus the ground travel time.
 7. **Ranking** shows the cheapest and fastest options, plus the top 10 by "best value" (a price-vs-time slider). Options with an unknown bag price rank lower.
 
 ### Calls and caching
@@ -85,7 +85,7 @@ The client is generated from `spec/ignav-openapi.json`. To regenerate: `npm run 
 - **Price per party or per person:** prices cover the whole party (confirmed: DEL→GAU is £67 for 1 adult and £133 for 2). The `price_is_party_total` setting controls this.
 - **Through tickets:** with `allow_self_transfer: false`, Ignav returned nothing for UK → GAU. With it set to `true`, the same call also returned protected itineraries (e.g. KLM + IndiGo via AMS and BOM). So the through search uses `true` and tells the two kinds apart with `requires_self_transfer`.
 - **Domestic coverage is incomplete:** e.g. Ignav has no direct CCU → GAU flights and few IndiGo flights. That's why domestic searches allow 1 stop by default.
-- **Bag data:** most domestic fares come back with no bag info. These are assumed to include 1 × 15kg bag and labelled "estimated". International fares that list `carry_on` but no `checked` count are treated as having no checked bag. The bag fee comes from `bag_fees`, falling back to the `*` row (placeholder £70 per 23kg bag).
+- **Bags:** when you need checked bags, every search sends `min_checked_bags`. Ignav then returns only fares that **include** those bags, so the prices are bag-inclusive. We never add our own bag fees. Any fare where Ignav doesn't confirm the bags is marked "bag price unknown" and ranked lower. Without the filter, Indian domestic fares had no bag data and most international fares were hand-luggage-only. One exception: with the filter, Ignav also dropped protected through tickets it has no bag data for (e.g. IndiGo/KLM via AMS–BOM). So through tickets are searched twice, with and without the filter (+1 call per UK airport). Those found only without it show "bag price unknown".
 - **Unconfirmed prices:** a fare with `price.status = "unverified"` gets a "Price not confirmed" badge.
 
 ## Return trips
@@ -93,7 +93,7 @@ The client is generated from `spec/ignav-openapi.json`. To regenerate: `npm run 
 - **International:** Ignav's return fares (`/api/fares/round-trip`) for UK ⇄ hub and UK ⇄ destination, one price for both directions. The return goes back to the same UK airport, or to any London airport when searching `LON`. These calls cost the same as one-way searches.
 - **Domestic:** hub → destination on the way out (as before), and destination → hub on the return date, one extra call per hub.
 - **Connection on the way home:** the domestic flight must land at least the change time (plus any terminal change) before the international flight leaves. It also has to be within the 14h maximum.
-- **Costs:** ground travel counted both ways. The return fare shows on the outbound flight, and the international flight home is "included". Bag fees are charged per direction.
+- **Costs:** ground travel counted both ways. The return fare shows on the outbound flight, and the international flight home is "included".
 - **Time:** total = door-to-door out + door-to-door back. The way back adds `uk_arrival_exit_mins` (60) to get through the UK airport.
 - **Typical call count:** 3 UK origins → 3 + 24 + ≤16 + ≤8 ≈ 50 calls. Real test: 49 calls, 270 options.
 
@@ -121,7 +121,7 @@ The search engine itself (Indian hubs, connection rules, return fares, train/cab
 
 ## Admin
 
-`/admin` edits every config table (ground travel, airports, bag fees, allowances, terminals, hub routes) and the search settings. Seed values marked "placeholder" are estimates and should be checked.
+`/admin` edits every config table (ground travel, airports, bag weight allowances, terminals, hub routes) and the search settings. Seed values marked "placeholder" are estimates and should be checked.
 
 ## Development
 

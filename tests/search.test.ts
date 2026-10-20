@@ -116,13 +116,35 @@ describe("runSearch (fake Ignav)", () => {
     networkCalls = 0;
   });
 
+  it("asks Ignav for bag-inclusive fares on every search", async () => {
+    const bodies: unknown[] = [];
+    const spy: FlightProvider = {
+      ...fakeIgnav,
+      searchOneWay: async (o, d, date, f, ctx) => {
+        bodies.push(buildOneWayRequest(o, d, date, f, ctx.settings));
+        return fakeIgnav.searchOneWay(o, d, date, f, ctx);
+      },
+    };
+    await runSearch(req, { store, provider: spy });
+    expect(bodies.length).toBeGreaterThan(0);
+    // Everything asks for bag-inclusive fares, except the extra through search (one per UK airport)
+    // that keeps protected through tickets Ignav has no bag data for.
+    const withBags = bodies.filter((b) => (b as { min_checked_bags?: number }).min_checked_bags === 1);
+    const through = bodies.filter((b) => (b as { destination: string }).destination === "GAU" && ["BHX", "MAN", "LHR", "LGW"].includes((b as { origin: string }).origin));
+    expect(bodies.length - withBags.length).toBe(4);
+    expect(through.length).toBe(8);
+    bodies.length = 0;
+    await runSearch({ ...req, bags: 0, date: "2026-12-11" }, { store, provider: spy });
+    expect(bodies.every((b) => (b as { min_checked_bags?: number }).min_checked_bags === undefined)).toBe(true);
+  });
+
   it("stays under 60 provider calls for a ±0 day search and finds both strategies", async () => {
     const res = await runSearch(req, { store, provider: fakeIgnav });
     expect(res.errors).toEqual([]);
     expect(res.stats.paidCalls).toBe(networkCalls);
     expect(res.stats.paidCalls).toBeLessThan(60);
-    // 4 through + 32 international (4 UK × 8 hubs) + 16 domestic (8 hubs × 2 dates) = 52.
-    expect(res.stats.paidCalls).toBe(52);
+    // 8 through (4 UK, with and without the bag filter) + 32 international (4 UK × 8 hubs) + 16 domestic (8 hubs × 2 dates) = 56.
+    expect(res.stats.paidCalls).toBe(56);
     expect(res.options.some((o) => o.kind === "through")).toBe(true);
     const split = res.options.filter((o) => o.kind === "split");
     expect(split.length).toBeGreaterThan(0);
@@ -162,7 +184,7 @@ describe("runSearch (fake Ignav)", () => {
     expect(res.options.length).toBeGreaterThan(0);
     expect(new Set(res.options.map((o) => o.ukAirport))).toEqual(new Set(["LHR"]));
     expect(res.options.every((o) => o.ground.mode === "not set")).toBe(true); // no Leeds prices configured
-    expect(res.stats.paidCalls).toBeLessThanOrEqual(1 + 8 + 16); // one origin: 1 through + 8 international + domestic
+    expect(res.stats.paidCalls).toBeLessThanOrEqual(2 + 8 + 16); // one origin: 2 through + 8 international + domestic
   });
 
   it("rejects bad passenger and airport input", async () => {
@@ -177,7 +199,7 @@ describe("runSearch (fake Ignav)", () => {
     const broken: FlightProvider = { ...fakeIgnav, searchOneWay: async () => { throw new Error("IGNAV_API_KEY is not set on the server"); } };
     const res = await runSearch(req, { store, provider: broken });
     expect(res.options).toEqual([]);
-    expect(res.errors).toEqual(["IGNAV_API_KEY is not set on the server (36 searches)"]);
+    expect(res.errors).toEqual(["IGNAV_API_KEY is not set on the server (40 searches)"]);
   });
 });
 
@@ -203,7 +225,7 @@ describe("Ignav self-transfer itineraries", () => {
     expect(parts[1].origin).toBe("DEL");
     expect(parts[1].carrier).toBe("AI");
     expect(parts[1].price.totalGbp).toBe(0); // included in the first part
-    expect(parts[1].baggage.checkedPieces).toBeNull(); // domestic defaults apply
+    expect(parts[1].baggage.checkedPieces).toBe(1); // the bag-inclusive search covers the whole itinerary
     // Never enters India mid-trip → can't place the ticket change.
     expect(splitAtIndiaEntry({ ...it, segments: [it.segments[0]] }, () => null)).toBeNull();
   });
@@ -231,8 +253,8 @@ describe("return trips", () => {
     const store = createMemoryStore();
     const res = await runSearch(rt, { store, provider: fakeIgnav });
     expect(res.errors).toEqual([]);
-    // 4 through + 32 international (return fares) + 16 domestic out + 8 domestic home (GAU → each hub).
-    expect(res.stats.paidCalls).toBe(4 + 32 + 16 + 8);
+    // 8 through (with/without bag filter) + 32 international (return fares) + 16 domestic out + 8 domestic home.
+    expect(res.stats.paidCalls).toBe(8 + 32 + 16 + 8);
     expect(res.options.length).toBeGreaterThan(0);
     for (const o of res.options) {
       expect(o.back).not.toBeNull();

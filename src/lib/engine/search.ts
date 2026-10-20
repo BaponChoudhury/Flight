@@ -135,7 +135,7 @@ export function buildOption(
 
 const INDIA_TZ = "Asia/Kolkata";
 
-function sliceItinerary(it: NormalisedItinerary, from: number, to: number, priced: boolean, keepBags = priced): NormalisedItinerary {
+function sliceItinerary(it: NormalisedItinerary, from: number, to: number, priced: boolean): NormalisedItinerary {
   const segments = it.segments.slice(from, to);
   const first = segments[0];
   const last = segments[segments.length - 1];
@@ -150,8 +150,8 @@ function sliceItinerary(it: NormalisedItinerary, from: number, to: number, price
     carrierName: first.carrierName,
     segments,
     price: priced ? it.price : { ...it.price, amount: 0, totalGbp: 0 },
-    // Ignav's bag count describes the international ticket; for the domestic part we fall back to defaults.
-    baggage: keepBags ? it.baggage : { checkedPieces: null, carryOnPieces: null },
+    // The bag-inclusive search applies to the whole itinerary, so every part keeps Ignav's bag count.
+    baggage: it.baggage,
   };
 }
 
@@ -191,7 +191,7 @@ export function splitAtIndiaEntry(
 /**
  * Mirror of splitAtIndiaEntry for the way home: split where a domestic flight
  * hands over to one leaving India. Both parts are price-included (the return
- * fare is on the outbound); the international part keeps Ignav's bag count.
+ * fare is on the outbound).
  */
 export function splitAtIndiaExit(
   it: NormalisedItinerary,
@@ -204,7 +204,7 @@ export function splitAtIndiaExit(
     const outOfIndia = tz(seg.origin, seg.departTz) === INDIA_TZ && tz(seg.dest, seg.arriveTz) !== INDIA_TZ;
     const prevDomestic = tz(prev.origin, prev.departTz) === INDIA_TZ;
     if (outOfIndia && prevDomestic && prev.dest === seg.origin) {
-      return [sliceItinerary(it, 0, i, false), sliceItinerary(it, i, it.segments.length, false, true)];
+      return [sliceItinerary(it, 0, i, false), sliceItinerary(it, i, it.segments.length, false)];
     }
   }
   return null;
@@ -230,7 +230,8 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
   const minBuffer = req.minBufferMins ?? s.min_buffer_mins;
   const allowOvernight = !!req.allowOvernight;
   const maxBuffer = allowOvernight ? s.overnight_max_buffer_mins : s.max_buffer_mins;
-  const pax = { adults: req.adults, children: req.children, infants: req.infants ?? 0 };
+  // Every search asks for fares that include the user's checked bags, so prices are bag-inclusive.
+  const pax = { adults: req.adults, children: req.children, infants: req.infants ?? 0, minCheckedBags: req.bags > 0 ? req.bags : null };
 
   const tzOf = (iata: string) => config.airports.find((a) => a.iata === iata)?.tz ?? knownTz(iata) ?? "Asia/Kolkata";
   const dates = req.flexDays === 1 ? [addDays(req.date, -1), req.date, addDays(req.date, 1)] : [req.date];
@@ -293,7 +294,11 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
     }
   };
 
-  const throughJobs = ukAirports.flatMap((o) => dates.map((d) => searchIntl(o, req.dest, d, throughFilters)));
+  // With bags, the bag filter makes Ignav drop protected through tickets it has no bag
+  // data for (e.g. LHR–DEL–GAU on Air India), so through tickets are also searched
+  // without it (+1 call per UK airport). Those keep "bag price unknown" — never a guessed fee.
+  const throughVariants = pax.minCheckedBags ? [throughFilters, { ...throughFilters, minCheckedBags: null }] : [throughFilters];
+  const throughJobs = ukAirports.flatMap((o) => dates.flatMap((d) => throughVariants.map((f) => searchIntl(o, req.dest, d, f))));
   const intlJobs = ukAirports.flatMap((o) => hubs.flatMap((h) => dates.map((d) => searchIntl(o, h, d, intlFilters))));
   const [throughRes, intlRes] = await Promise.all([Promise.all(throughJobs), Promise.all(intlJobs)]);
 
@@ -459,10 +464,20 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
   }
   if (noWayHome) notes.push(`${noWayHome} return fares dropped: no domestic flight home on ${returnDate} connects in time.`);
 
-  // De-duplicate (identical itineraries can come back for neighbouring dates).
-  const unique = [...new Map(options.map((o) => [o.id, o])).values()].sort(
-    (a, b) => a.costs.total - b.costs.total || a.totalMins - b.totalMins,
-  );
+  // De-duplicate by the actual flights (the same itinerary can come back from
+  // neighbouring dates, or from the with/without-bags through searches).
+  // Prefer the copy whose bags Ignav confirmed, then the cheaper one.
+  const signature = (o: RouteOption) =>
+    allLegs(o).flatMap((l) => l.itinerary.segments.map((s) => `${s.carrier}${s.flightNumber}@${s.departUtc}`)).join("|");
+  const better = (a: RouteOption, b: RouteOption) =>
+    Number(a.costs.bagsUnknown) - Number(b.costs.bagsUnknown) || a.costs.total - b.costs.total;
+  const bySig = new Map<string, RouteOption>();
+  for (const o of options) {
+    const k = signature(o);
+    const prev = bySig.get(k);
+    if (!prev || better(o, prev) < 0) bySig.set(k, o);
+  }
+  const unique = [...bySig.values()].sort((a, b) => a.costs.total - b.costs.total || a.totalMins - b.totalMins);
 
   const failed = ctx.log.filter((c) => !c.ok).length;
   if (!unique.length && !errors.length) errors.push("No flights found for these dates and settings.");

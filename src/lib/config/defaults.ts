@@ -50,18 +50,12 @@ export const DEFAULT_GROUND_ACCESS: GroundAccess[] = [
   ga("LGW", "train", 45, 190, "placeholder: Stafford → Euston, then Thameslink/Gatwick Express"),
 ];
 
-export const DEFAULT_BAG_FEES: BagFee[] = [
-  { airline_code: "*", route_type: "international", bag_kg: 23, fee_gbp: 70, notes: "placeholder: any airline without its own row" },
-  { airline_code: "BA", route_type: "international", bag_kg: 23, fee_gbp: 65, notes: "placeholder: check airline site" },
-  { airline_code: "VS", route_type: "international", bag_kg: 23, fee_gbp: 65, notes: "placeholder: check airline site" },
-  { airline_code: "AI", route_type: "international", bag_kg: 23, fee_gbp: 60, notes: "placeholder: check airline site" },
-  { airline_code: "6E", route_type: "domestic", bag_kg: 15, fee_gbp: 25, notes: "placeholder: prepaid extra bag" },
-  { airline_code: "AI", route_type: "domestic", bag_kg: 15, fee_gbp: 25, notes: "placeholder: prepaid extra bag" },
-];
+// Bag prices come from Ignav (bag-inclusive fares); no fee table is seeded.
+export const DEFAULT_BAG_FEES: BagFee[] = [];
 
 export const DEFAULT_AIRLINE_BAG_DEFAULTS: AirlineBagDefault[] = [
   { airline_code: "*", route_type: "international", included_pieces: null, included_kg: 23, excess_per_kg_gbp: null, notes: "typical UK–India economy piece" },
-  { airline_code: "*", route_type: "domestic", included_pieces: 1, included_kg: 15, excess_per_kg_gbp: 6, notes: "Indian domestic economy usually includes 1 × 15kg (assumed when Ignav gives no bag data); excess ≈ ₹600–700/kg (placeholder)" },
+  { airline_code: "*", route_type: "domestic", included_pieces: null, included_kg: 15, excess_per_kg_gbp: null, notes: "Indian domestic economy is usually 15kg per bag (drives the excess-baggage warning only)" },
   { airline_code: "AI", route_type: "international", included_pieces: null, included_kg: 23, excess_per_kg_gbp: null, notes: "placeholder: verify" },
   { airline_code: "EK", route_type: "international", included_pieces: null, included_kg: 25, excess_per_kg_gbp: null, notes: "placeholder: weight concept, verify fare brand" },
   { airline_code: "QR", route_type: "international", included_pieces: null, included_kg: 25, excess_per_kg_gbp: null, notes: "placeholder: weight concept, verify fare brand" },

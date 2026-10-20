@@ -4,6 +4,8 @@ export interface SearchFilters {
   adults: number;
   children: number;
   infants?: number;
+  /** Only fares that include this many checked bags per passenger (prices are then bag-inclusive). */
+  minCheckedBags?: number | null;
   maxStops?: number | null;
   allowSelfTransfer: boolean;
   /** Hours (0–23) in the departure airport's local time, and arrival hours in the arrival airport's local time. */

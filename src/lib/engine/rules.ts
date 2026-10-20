@@ -90,72 +90,49 @@ export const STANDARD_BAG_KG = 23;
  * Work out what the user's checked bags will cost on one ticket.
  * `bags` and `bagKg` are per passenger.
  */
+/**
+ * Checked bags on one ticket. Searches ask Ignav for fares that already
+ * include the user's bags (min_checked_bags), so the fare price is the
+ * bag-inclusive price. We never add our own bag fees: if Ignav doesn't confirm
+ * the bags, the result is "unknown". The weight allowance (config) only drives
+ * an informational "Excess baggage risk" flag.
+ */
 export function assessBags(
   it: NormalisedItinerary,
   routeType: RouteType,
   req: Pick<SearchRequest, "bags" | "bagKg" | "adults" | "children">,
-  config: Pick<AppConfig, "bagFees" | "airlineBagDefaults">,
+  config: Pick<AppConfig, "airlineBagDefaults">,
 ): BagAssessment {
-  const pax = req.adults + req.children;
-  const airline = it.carrier;
-  const defaults = byAirline(
-    config.airlineBagDefaults.filter((d) => d.route_type === routeType),
-    airline,
-  );
+  const defaults = byAirline(config.airlineBagDefaults.filter((d) => d.route_type === routeType), it.carrier);
   const includedKg = defaults?.included_kg ?? null;
+  const pieces = it.baggage.checkedPieces;
 
   if (req.bags <= 0) {
-    return { status: "included", feeGbp: 0, excessGbp: 0, includedPieces: it.baggage.checkedPieces, includedKg, excessRisk: false, note: "No checked bags needed" };
+    return { status: "included", feeGbp: 0, excessGbp: 0, includedPieces: pieces, includedKg, excessRisk: false, note: "No checked bags needed" };
   }
 
-  let pieces = it.baggage.checkedPieces;
-  let estimated = false;
-  if (pieces == null && defaults?.included_pieces != null) {
-    pieces = defaults.included_pieces;
-    estimated = true;
-  }
-
-  // Weight risk applies to bags that are included as well as bought ones. Without
-  // the user's bag weight, flag allowances below a standard 23kg bag but don't
-  // guess a cost.
   const kg = req.bagKg ?? null;
   const excessRisk = includedKg != null && (kg != null ? kg > includedKg : includedKg < STANDARD_BAG_KG);
-  const excessGbp =
-    excessRisk && kg != null && defaults?.excess_per_kg_gbp != null
-      ? (kg - (includedKg as number)) * defaults.excess_per_kg_gbp * req.bags * pax
-      : 0;
 
-  if (pieces == null) {
-    return { status: "unknown", feeGbp: 0, excessGbp, includedPieces: null, includedKg, excessRisk, note: "Airline didn't say whether bags are included" };
-  }
-
-  const missing = Math.max(0, req.bags - pieces);
-  if (missing === 0) {
+  if (pieces == null || pieces < req.bags) {
     return {
-      status: estimated ? "estimated" : "included",
+      status: "unknown",
       feeGbp: 0,
-      excessGbp,
+      excessGbp: 0,
       includedPieces: pieces,
       includedKg,
       excessRisk,
-      note: `${pieces} checked bag${pieces === 1 ? "" : "s"} included${estimated ? " (estimated)" : ""}`,
+      note: pieces == null ? "Bags not confirmed by the airline data" : `Only ${pieces} checked bag${pieces === 1 ? "" : "s"} included; extra bag price unknown`,
     };
   }
-
-  const fee = config.bagFees
-    .filter((f) => f.route_type === routeType && (f.airline_code === airline || f.airline_code === "*") && f.bag_kg >= (kg ?? 0))
-    .sort((a, b) => (a.airline_code === "*" ? 1 : 0) - (b.airline_code === "*" ? 1 : 0) || a.bag_kg - b.bag_kg)[0];
-  if (!fee) {
-    return { status: "unknown", feeGbp: 0, excessGbp, includedPieces: pieces, includedKg, excessRisk, note: `Need ${missing} more bag${missing === 1 ? "" : "s"} each; price unknown` };
-  }
   return {
-    status: "fee",
-    feeGbp: fee.fee_gbp * missing * pax,
-    excessGbp: 0, // a bought bag is bought at the right weight
+    status: "included",
+    feeGbp: 0,
+    excessGbp: 0,
     includedPieces: pieces,
     includedKg,
-    excessRisk: false,
-    note: `${missing} extra bag${missing === 1 ? "" : "s"} × ${pax} traveller${pax === 1 ? "" : "s"} at £${fee.fee_gbp}`,
+    excessRisk,
+    note: `${pieces} checked bag${pieces === 1 ? "" : "s"} included in the fare`,
   };
 }
 

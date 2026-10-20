@@ -69,6 +69,7 @@ export function buildOneWayRequest(
     market: settings.market,
   };
   if (filters.maxStops != null) body.max_stops = filters.maxStops;
+  if (filters.minCheckedBags) body.min_checked_bags = filters.minCheckedBags;
   const t = filters.timeRange;
   if (t && Object.values(t).some((v) => v != null)) {
     body.departure_time_range = {

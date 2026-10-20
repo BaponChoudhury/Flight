@@ -52,28 +52,22 @@ describe("connection buffers", () => {
 
 describe("baggage", () => {
   const req = { bags: 1, bagKg: 23, adults: 2, children: 0 };
+  const mk = (checked: number | null, carrier = "6E") =>
+    itin({ origin: "DEL", dest: "GAU", departUtc: "2026-12-11T09:00:00Z", arriveUtc: "2026-12-11T11:30:00Z", gbp: 60, carrier, checked });
 
-  it("treats included bags as free but flags weight over the domestic allowance", () => {
-    const b = assessBags(dom("2026-12-11T10:00:00Z", "6E"), "domestic", req, config);
-    expect(b.status).toBe("included");
-    expect(b.feeGbp).toBe(0);
-    expect(b.excessRisk).toBe(true); // 23kg > 15kg
-    expect(b.excessGbp).toBe((23 - 15) * 6 * 2);
+  it("treats bags Ignav confirms as included in the fare, and flags a 15kg domestic allowance", () => {
+    const b = assessBags(mk(1), "domestic", req, config);
+    expect(b).toMatchObject({ status: "included", feeGbp: 0, excessGbp: 0, excessRisk: true, includedKg: 15 });
   });
 
-  it("adds the configured fee per missing bag per traveller", () => {
-    const noBag = itin({ origin: "LHR", dest: "DEL", departUtc: "2026-12-10T21:30:00Z", arriveUtc: "2026-12-11T05:30:00Z", gbp: 300, carrier: "BA", checked: 0 });
-    const b = assessBags(noBag, "international", req, config);
-    expect(b).toMatchObject({ status: "fee", feeGbp: 65 * 2, excessRisk: false });
+  it("never invents a bag fee: missing or unconfirmed bags are 'unknown'", () => {
+    expect(assessBags(mk(0, "BA"), "international", req, config)).toMatchObject({ status: "unknown", feeGbp: 0 });
+    expect(assessBags(mk(null, "ZZ"), "international", req, config)).toMatchObject({ status: "unknown", feeGbp: 0 });
+    expect(assessBags(mk(1), "domestic", { ...req, bags: 2 }, config)).toMatchObject({ status: "unknown", feeGbp: 0 });
   });
 
-  it("falls back to the any-airline (*) fee, and is unknown without one", () => {
-    const noBag = itin({ origin: "LHR", dest: "DEL", departUtc: "2026-12-10T21:30:00Z", arriveUtc: "2026-12-11T05:30:00Z", gbp: 300, carrier: "ZZ", checked: 0 });
-    expect(assessBags(noBag, "international", req, config)).toMatchObject({ status: "fee", feeGbp: 70 * 2 });
-    const noFallback = { ...config, bagFees: config.bagFees.filter((f) => f.airline_code !== "*") };
-    expect(assessBags(noBag, "international", req, noFallback).status).toBe("unknown");
-    const unknown = { ...noBag, baggage: { checkedPieces: null, carryOnPieces: null } };
-    expect(assessBags(unknown, "international", req, noFallback).status).toBe("unknown");
+  it("needs nothing when no checked bags are wanted", () => {
+    expect(assessBags(mk(null), "domestic", { ...req, bags: 0 }, config)).toMatchObject({ status: "included", excessRisk: false });
   });
 });
 
