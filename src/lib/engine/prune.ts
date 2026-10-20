@@ -7,7 +7,10 @@ export interface PruneOptions {
   /** Cheapest through-ticket fare (GBP, whole party), if any were found. */
   cheapestThroughGbp: number | null;
   factor: number;
-  /** Keep at most this many per (UK origin, hub) group by price, plus the 2 fastest. */
+  /**
+   * Keep this many per (UK origin, hub) group by price, plus the 3 shortest and
+   * 3 earliest-arriving. Costs no extra calls: domestic searches are per hub/date.
+   */
   maxPerGroup: number;
 }
 
@@ -30,8 +33,9 @@ export function pruneInternational(intl: NormalisedItinerary[], opts: PruneOptio
   const kept: NormalisedItinerary[] = [];
   for (const list of groups.values()) {
     const byPrice = [...list].sort((a, b) => a.price.totalGbp - b.price.totalGbp).slice(0, opts.maxPerGroup);
-    const byTime = [...list].sort((a, b) => a.durationMins - b.durationMins).slice(0, 2);
-    const chosen = new Set([...byPrice, ...byTime]);
+    const byDuration = [...list].sort((a, b) => a.durationMins - b.durationMins || a.arriveUtc.localeCompare(b.arriveUtc)).slice(0, 3);
+    const byArrival = [...list].sort((a, b) => a.arriveUtc.localeCompare(b.arriveUtc)).slice(0, 3);
+    const chosen = new Set([...byPrice, ...byDuration, ...byArrival]);
     kept.push(...list.filter((i) => chosen.has(i)));
   }
   return { kept, droppedTooExpensive, droppedByCap: affordable.length - kept.length };

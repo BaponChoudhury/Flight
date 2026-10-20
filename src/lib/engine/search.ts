@@ -19,7 +19,25 @@ import { domesticDatesNeeded, hubsToSearch, pruneInternational } from "./prune";
 import { aggregateCosts, assessBags, checkConnection, groundCost } from "./rules";
 import { addDays, addMinutes, localDate, localHour, minutesBetween } from "./time";
 
-const MAX_OPTIONS_RETURNED = 300;
+const KEEP_PER_AXIS = 150;
+
+/**
+ * Trim the option list without hiding anything the ranking could pick: keep the
+ * cheapest N, the fastest N, and every option no other option beats on both
+ * price and time (so any position of the price-vs-time slider still works).
+ */
+export function selectForReturn<T extends { costs: { total: number }; totalMins: number }>(options: T[], perAxis = KEEP_PER_AXIS): T[] {
+  const byCost = [...options].sort((a, b) => a.costs.total - b.costs.total || a.totalMins - b.totalMins);
+  const keep = new Set<T>([...byCost.slice(0, perAxis), ...[...options].sort((a, b) => a.totalMins - b.totalMins).slice(0, perAxis)]);
+  let bestMins = Infinity;
+  for (const o of byCost) {
+    if (o.totalMins < bestMins) {
+      keep.add(o);
+      bestMins = o.totalMins;
+    }
+  }
+  return byCost.filter((o) => keep.has(o));
+}
 
 export function validateRequest(r: SearchRequest): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(r.date)) return "Pick a departure date.";
@@ -270,7 +288,7 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
 
   return {
     searchId,
-    options: unique.slice(0, MAX_OPTIONS_RETURNED),
+    options: selectForReturn(unique),
     stats: { paidCalls, cacheHits, failedCalls: failed, durationMs, calls: ctx.log },
     errors: dedupeErrors(errors),
     notes,

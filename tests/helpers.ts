@@ -22,6 +22,7 @@ export function itin(p: {
     arriveUtc: p.arriveUtc,
     durationMins,
     carrier,
+    carrierName: null,
     segments: [
       {
         carrier,

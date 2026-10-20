@@ -86,13 +86,16 @@ export function toGbp(amount: number, currency: string, settings: Settings): { g
   return rate ? { gbp: amount * rate, approx: true } : null;
 }
 
+/** UTC field if present, else local time + timezone. Never guesses: throws if neither. */
+function segmentInstant(utc: string | null, local: string, tz: string | null): string {
+  if (utc) return parseInstant(utc);
+  if (tz) return parseInstant(local, tz);
+  throw new Error(`no UTC time or timezone for ${local}`);
+}
+
 function normaliseSegment(s: S["SegmentModel"]): NormalisedSegment {
-  const departUtc = s.departure_time_utc
-    ? parseInstant(s.departure_time_utc)
-    : parseInstant(s.departure_time_local, s.departure_timezone);
-  const arriveUtc = s.arrival_time_utc
-    ? parseInstant(s.arrival_time_utc)
-    : parseInstant(s.arrival_time_local, s.arrival_timezone);
+  const departUtc = segmentInstant(s.departure_time_utc, s.departure_time_local, s.departure_timezone);
+  const arriveUtc = segmentInstant(s.arrival_time_utc, s.arrival_time_local, s.arrival_timezone);
   return {
     carrier: s.marketing_carrier_code,
     carrierName: s.operating_carrier_name,
@@ -132,7 +135,9 @@ export function normaliseOneWay(
         departUtc,
         arriveUtc,
         durationMins: it.outbound.duration_minutes ?? minutesBetween(departUtc, arriveUtc),
-        carrier: it.outbound.carrier ?? segments[0].carrier,
+        // LegModel.carrier is the airline *name*; rules key on the IATA code.
+        carrier: segments[0].carrier,
+        carrierName: it.outbound.carrier ?? segments[0].carrierName,
         segments,
         price: {
           amount: it.price.amount,

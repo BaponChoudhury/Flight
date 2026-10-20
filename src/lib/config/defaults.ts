@@ -60,7 +60,7 @@ export const DEFAULT_BAG_FEES: BagFee[] = [
 
 export const DEFAULT_AIRLINE_BAG_DEFAULTS: AirlineBagDefault[] = [
   { airline_code: "*", route_type: "international", included_pieces: null, included_kg: 23, excess_per_kg_gbp: null, notes: "typical UK–India economy piece" },
-  { airline_code: "*", route_type: "domestic", included_pieces: null, included_kg: 15, excess_per_kg_gbp: 6, notes: "Indian domestic economy is usually 15kg; excess ≈ ₹600–700/kg (placeholder)" },
+  { airline_code: "*", route_type: "domestic", included_pieces: 1, included_kg: 15, excess_per_kg_gbp: 6, notes: "Indian domestic economy usually includes 1 × 15kg (assumed when Ignav gives no bag data); excess ≈ ₹600–700/kg (placeholder)" },
   { airline_code: "AI", route_type: "international", included_pieces: null, included_kg: 23, excess_per_kg_gbp: null, notes: "placeholder: verify" },
   { airline_code: "EK", route_type: "international", included_pieces: null, included_kg: 25, excess_per_kg_gbp: null, notes: "placeholder: weight concept, verify fare brand" },
   { airline_code: "QR", route_type: "international", included_pieces: null, included_kg: 25, excess_per_kg_gbp: null, notes: "placeholder: weight concept, verify fare brand" },
@@ -91,17 +91,17 @@ export const DEFAULT_SETTINGS: Settings = {
   hotel_gbp_default: 40,
   hotel_gbp_by_hub: {},
   prune_factor: 1.5,
-  max_intl_per_group: 6,
+  max_intl_per_group: 12,
   max_domestic_per_intl: 3,
   uk_airport_arrival_mins: 180,
   cache_ttl_mins: 120,
   market: "GB",
   fx_to_gbp: { GBP: 1, USD: 0.75, EUR: 0.85, INR: 0.0089 },
   price_is_party_total: true,
-  domestic_max_stops: 0,
+  domestic_max_stops: 1, // Ignav's direct-only domestic coverage is thin (e.g. no CCU→GAU directs)
   hub_route_recheck_days: 30,
   unknown_bag_penalty: 0.15,
-  max_parallel_calls: 6,
+  max_parallel_calls: 12,
 };
 
 export function defaultConfig(): AppConfig {

@@ -37,7 +37,7 @@ on conflict do nothing;
 
 insert into airline_bag_defaults (airline_code, route_type, included_pieces, included_kg, excess_per_kg_gbp, notes) values
   ('*', 'international', null, 23, null, 'typical UK–India economy piece'),
-  ('*', 'domestic', null, 15, 6, 'Indian domestic economy is usually 15kg; excess ≈ ₹600–700/kg (placeholder)'),
+  ('*', 'domestic', 1, 15, 6, 'Indian domestic economy usually includes 1 × 15kg (assumed when Ignav gives no bag data); excess ≈ ₹600–700/kg (placeholder)'),
   ('AI', 'international', null, 23, null, 'placeholder: verify'),
   ('EK', 'international', null, 25, null, 'placeholder: weight concept, verify fare brand'),
   ('QR', 'international', null, 25, null, 'placeholder: weight concept, verify fare brand')
@@ -68,15 +68,15 @@ insert into settings (key, value) values
   ('hotel_gbp_default', '40'::jsonb),
   ('hotel_gbp_by_hub', '{}'::jsonb),
   ('prune_factor', '1.5'::jsonb),
-  ('max_intl_per_group', '6'::jsonb),
+  ('max_intl_per_group', '12'::jsonb),
   ('max_domestic_per_intl', '3'::jsonb),
   ('uk_airport_arrival_mins', '180'::jsonb),
   ('cache_ttl_mins', '120'::jsonb),
   ('market', '"GB"'::jsonb),
   ('fx_to_gbp', '{"GBP":1,"USD":0.75,"EUR":0.85,"INR":0.0089}'::jsonb),
   ('price_is_party_total', 'true'::jsonb),
-  ('domestic_max_stops', '0'::jsonb),
+  ('domestic_max_stops', '1'::jsonb),
   ('hub_route_recheck_days', '30'::jsonb),
   ('unknown_bag_penalty', '0.15'::jsonb),
-  ('max_parallel_calls', '6'::jsonb)
+  ('max_parallel_calls', '12'::jsonb)
 on conflict do nothing;

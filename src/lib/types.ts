@@ -119,7 +119,8 @@ export interface NormalisedItinerary {
   departUtc: string;
   arriveUtc: string;
   durationMins: number;
-  carrier: string | null;
+  carrier: string | null; // IATA code of the first segment's marketing carrier
+  carrierName: string | null;
   segments: NormalisedSegment[];
   price: {
     amount: number;

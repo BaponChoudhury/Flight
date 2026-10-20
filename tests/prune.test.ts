@@ -17,11 +17,21 @@ describe("pruning", () => {
     expect(r.kept).toHaveLength(2);
   });
 
-  it("caps each origin/hub group to the cheapest N plus the 2 fastest", () => {
-    const list = [mk("DEL", 100, 12), mk("DEL", 110, 12), mk("DEL", 120, 12), mk("DEL", 500, 8), mk("DEL", 510, 8.5), mk("DEL", 520, 13)];
+  it("caps each origin/hub group to the cheapest N plus the 3 shortest and 3 earliest arrivals", () => {
+    const at = (gbp: number, depart: string, hours: number) =>
+      itin({ origin: "LHR", dest: "DEL", departUtc: depart, arriveUtc: new Date(Date.parse(depart) + hours * 3600000).toISOString(), gbp });
+    const list = [
+      at(100, "2026-12-10T10:00:00Z", 14), // cheap
+      at(110, "2026-12-10T10:00:00Z", 14), // cheap
+      at(500, "2026-12-10T12:00:00Z", 8.5), // short
+      at(510, "2026-12-10T13:00:00Z", 8.6), // short
+      at(520, "2026-12-10T14:00:00Z", 8.7), // short
+      at(530, "2026-12-10T22:00:00Z", 8.8), // dropped: not cheap, short or early
+      at(900, "2026-12-10T04:00:00Z", 11), // earliest arrival
+    ];
     const r = pruneInternational(list, { cheapestThroughGbp: null, factor: 1.5, maxPerGroup: 2 });
-    expect(r.kept.map((i) => i.price.totalGbp).sort((a, b) => a - b)).toEqual([100, 110, 500, 510]);
-    expect(r.droppedByCap).toBe(2);
+    expect(r.kept.map((i) => i.price.totalGbp).sort((a, b) => a - b)).toEqual([100, 110, 500, 510, 520, 900]);
+    expect(r.droppedByCap).toBe(1);
   });
 
   it("only searches domestic dates the connection window can reach", () => {
@@ -42,5 +52,22 @@ describe("pruning", () => {
     ];
     expect(hubsToSearch(["DEL", "COK", "AMD", "BOM"], "GAU", routes, 30, now)).toEqual(["DEL", "AMD", "BOM"]);
     expect(hubsToSearch(["DEL", "CCU"], "CCU", [], 30, now)).toEqual(["DEL"]);
+  });
+});
+
+describe("returned option set", () => {
+  it("keeps the cheapest, the fastest and every price/time trade-off", async () => {
+    const { selectForReturn } = await import("@/lib/engine/search");
+    const o = (total: number, totalMins: number) => ({ costs: { total }, totalMins });
+    const cheapSlow = Array.from({ length: 5 }, (_, i) => o(500 + i, 3000 + i));
+    const middle = o(900, 1800); // dominated by nothing
+    const dominated = o(950, 1900); // worse than `middle` on both
+    const fastDear = o(2000, 1200);
+    const kept = selectForReturn([...cheapSlow, middle, dominated, fastDear], 2);
+    expect(kept).toContain(cheapSlow[0]);
+    expect(kept).toContain(middle);
+    expect(kept).toContain(fastDear);
+    expect(kept).not.toContain(dominated);
+    expect(kept).not.toContain(cheapSlow[4]);
   });
 });

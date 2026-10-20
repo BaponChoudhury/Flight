@@ -41,9 +41,9 @@ All tables have row-level security enabled with no policies, so the public anon 
    - **B. International legs:** UK airport → each Indian hub that isn't known to lack flights to the destination (`hub_routes`).
 3. **Prune:**
    - Drop international legs costing more than `prune_factor` (1.5) × the cheapest through ticket.
-   - Keep the cheapest `max_intl_per_group` plus the 2 fastest per UK airport/hub pair.
+   - Keep the cheapest `max_intl_per_group` (12) plus the 3 shortest and the 3 earliest-arriving per UK airport/hub pair. This costs no extra calls, because domestic searches are per hub and date.
 4. **Stage 2:**
-   - Search hub → destination (direct by default) only for hubs with surviving legs.
+   - Search hub → destination (up to 1 stop, `domestic_max_stops`) only for hubs with surviving legs.
    - Only on the dates the connection window can reach: the arrival date and the day after.
    - Hubs with no flights are recorded in `hub_routes` and skipped for 30 days.
 5. **Combine** each international leg with each domestic leg where:
@@ -59,6 +59,9 @@ All tables have row-level security enabled with no policies, so the public anon 
 - **Worst case for a ±0 day search with nothing cached: 52 calls.** That's 4 through + 32 international (4 × 8 hubs) + 16 domestic (8 hubs × 2 days). After the first search, hubs with no service are skipped, and repeat searches within 2 hours cost 0 calls.
 - ±1 day flexibility triples the date searches.
 - Booking links are fetched only when you tap "Get booking links" (also cached).
+- **Real test (Stafford → GAU, 10 Dec 2026, 2 adults):** 53 calls on the first search, then 0 on a repeat; about 45s when nothing was cached, mostly waiting on Ignav (1–6s per call).
+
+> Dev note: some sandboxes route traffic through a proxy that Node's `fetch` ignores. If Supabase or Ignav calls fail with `fetch failed`, start the server with `NODE_USE_ENV_PROXY=1` (Node ≥ 22.21). Vercel doesn't need this.
 
 ### Ignav data notes
 
@@ -67,7 +70,10 @@ The client is generated from `spec/ignav-openapi.json`. To regenerate: `npm run 
 - **Baggage:** Ignav returns a **number** of checked bags per itinerary, with no weight. Weight allowances (e.g. 15kg on Indian domestic flights) come from `airline_bag_defaults`; they drive the "Excess baggage risk" badge and an excess estimate.
 - **Terminals:** Ignav doesn't return terminals. They come from `airline_terminals` and `terminal_rules`.
 - **Currency:** prices are requested with `market: "GB"`. Any non-GBP price is converted with `fx_to_gbp` in settings and marked as converted.
-- **Price per party or per person:** `price_is_party_total` (default `true`) assumes the fare covers the whole party. **Check this against your first real search.**
+- **Price per party or per person:** prices cover the whole party (confirmed: DEL→GAU is £67 for 1 adult and £133 for 2). The `price_is_party_total` setting controls this.
+- **Through tickets to small airports:** for UK → GAU, Ignav only returned itineraries it marks `requires_self_transfer` (even QR + AI). With "protected connections only", no through tickets are found and every result is a split ticket.
+- **Domestic coverage is incomplete:** e.g. Ignav has no direct CCU → GAU flights and few IndiGo flights. That's why domestic searches allow 1 stop by default.
+- **Bag data:** most domestic fares come back with no bag info. These are assumed to include 1 × 15kg bag and labelled "estimated". International fares that list only `carry_on` count as "bag price unknown".
 - **Unconfirmed prices:** a fare with `price.status = "unverified"` gets a "Price not confirmed" badge.
 
 ## Admin

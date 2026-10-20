@@ -32,7 +32,7 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
   const [err, setErr] = useState("");
   const via = it.segments.slice(0, -1).map((s) => s.dest);
   const flights = it.segments.map((s) => `${s.carrier ?? ""}${s.flightNumber ?? ""}`).filter(Boolean).join(", ");
-  const airline = it.segments[0]?.carrierName ?? it.carrier ?? "Airline";
+  const airline = it.carrierName ?? it.segments[0]?.carrierName ?? it.carrier ?? "Airline";
 
   async function loadLinks() {
     setState("loading");
