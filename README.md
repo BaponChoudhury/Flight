@@ -109,6 +109,16 @@ There's no free API for live UK train fares or taxi quotes, so you enter your ow
 - Totals, door-to-door times and the ranking update straight away, with no new Ignav calls. Each route card shows the other option and the price difference.
 - Your entries are saved in your browser, per home area. The first time, they're filled in from the `ground_access` defaults in Admin.
 
+## Known limitations / later
+
+**Origins outside the UK (planned for after Phases 2–4).** Today the app assumes the traveller starts in the UK:
+- The town lookup uses postcodes.io, which only covers the UK. Plan: a free worldwide geocoder, e.g. Open-Meteo geocoding, keeping postcodes.io for UK postcodes.
+- Nearest airports come from a fixed list of 21 UK airports (`src/lib/config/places.ts`). Plan: the 3 nearest *large* airports within about 300 km, taken from the OurAirports index already used for "To", with multi-airport cities grouped (as `LON` is).
+- "Leave home" and "home" times are shown in UK time. Plan: the departure airport's timezone.
+- Prices use Ignav's `GB` market and GBP. Plan: market and currency chosen from the traveller's country.
+
+The search engine itself (Indian hubs, connection rules, return fares, train/cab inputs) needs no changes.
+
 ## Admin
 
 `/admin` edits every config table (ground travel, airports, bag fees, allowances, terminals, hub routes) and the search settings. Seed values marked "placeholder" are estimates and should be checked.
