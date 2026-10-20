@@ -38,6 +38,7 @@ All tables have row-level security enabled with no policies, so the public anon 
 1. **UK origins:** BHX, MAN, LHR and LGW (all enabled ones, or the ones ticked under "More options").
 2. **Stage 1** (in parallel):
    - **A. Through tickets:** UK airport → destination, protected connections only (`allow_self_transfer: false`).
+     Self-transfer itineraries are allowed in this same call (no extra cost). Ignav's ready-made separate-ticket combinations are split where they enter India. They have to meet the same buffer rules there, and also at every change of airline earlier in the trip. They're shown as split tickets whose second flight is "included" in the first price.
    - **B. International legs:** UK airport → each Indian hub that isn't known to lack flights to the destination (`hub_routes`).
 3. **Prune:**
    - Drop international legs costing more than `prune_factor` (1.5) × the cheapest through ticket.
@@ -71,9 +72,9 @@ The client is generated from `spec/ignav-openapi.json`. To regenerate: `npm run 
 - **Terminals:** Ignav doesn't return terminals. They come from `airline_terminals` and `terminal_rules`.
 - **Currency:** prices are requested with `market: "GB"`. Any non-GBP price is converted with `fx_to_gbp` in settings and marked as converted.
 - **Price per party or per person:** prices cover the whole party (confirmed: DEL→GAU is £67 for 1 adult and £133 for 2). The `price_is_party_total` setting controls this.
-- **Through tickets to small airports:** for UK → GAU, Ignav only returned itineraries it marks `requires_self_transfer` (even QR + AI). With "protected connections only", no through tickets are found and every result is a split ticket.
+- **Through tickets:** with `allow_self_transfer: false`, Ignav returned nothing for UK → GAU. With it set to `true`, the same call also returned protected itineraries (e.g. KLM + IndiGo via AMS and BOM). So the through search uses `true` and tells the two kinds apart with `requires_self_transfer`.
 - **Domestic coverage is incomplete:** e.g. Ignav has no direct CCU → GAU flights and few IndiGo flights. That's why domestic searches allow 1 stop by default.
-- **Bag data:** most domestic fares come back with no bag info. These are assumed to include 1 × 15kg bag and labelled "estimated". International fares that list only `carry_on` count as "bag price unknown".
+- **Bag data:** most domestic fares come back with no bag info. These are assumed to include 1 × 15kg bag and labelled "estimated". International fares that list `carry_on` but no `checked` count are treated as having no checked bag. The bag fee comes from `bag_fees`, falling back to the `*` row (placeholder £70 per 23kg bag).
 - **Unconfirmed prices:** a fare with `price.status = "unverified"` gets a "Price not confirmed" badge.
 
 ## Getting to the airport (train vs cab)

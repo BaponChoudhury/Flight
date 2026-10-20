@@ -28,6 +28,7 @@ insert into ground_access (origin_area, airport, mode, cost_gbp, per_person, dur
 on conflict do nothing;
 
 insert into bag_fees (airline_code, route_type, bag_kg, fee_gbp, notes) values
+  ('*', 'international', 23, 70, 'placeholder: any airline without its own row'),
   ('BA', 'international', 23, 65, 'placeholder: check airline site'),
   ('VS', 'international', 23, 65, 'placeholder: check airline site'),
   ('AI', 'international', 23, 60, 'placeholder: check airline site'),

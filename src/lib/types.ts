@@ -180,6 +180,8 @@ export interface FlightLeg {
   routeType: RouteType;
   itinerary: NormalisedItinerary;
   bag: BagAssessment;
+  /** Sold together with the previous leg (Ignav self-transfer itinerary): price and booking are on that leg. */
+  bundled?: boolean;
 }
 
 export interface Connection {

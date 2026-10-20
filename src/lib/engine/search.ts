@@ -99,6 +99,61 @@ export function buildOption(
   };
 }
 
+const INDIA_TZ = "Asia/Kolkata";
+
+function sliceItinerary(it: NormalisedItinerary, from: number, to: number, priced: boolean): NormalisedItinerary {
+  const segments = it.segments.slice(from, to);
+  const first = segments[0];
+  const last = segments[segments.length - 1];
+  return {
+    ...it,
+    origin: first.origin,
+    dest: last.dest,
+    departUtc: first.departUtc,
+    arriveUtc: last.arriveUtc,
+    durationMins: minutesBetween(first.departUtc, last.arriveUtc),
+    carrier: first.carrier,
+    carrierName: first.carrierName,
+    segments,
+    price: priced ? it.price : { ...it.price, amount: 0, totalGbp: 0 },
+    // Ignav's bag count describes the ticket as sold; for the domestic part we fall back to defaults.
+    baggage: priced ? it.baggage : { checkedPieces: null, carryOnPieces: null },
+  };
+}
+
+/**
+ * In a self-transfer itinerary we don't know where the ticket breaks are, so
+ * treat every change of airline as one and require the minimum buffer there.
+ */
+export function airlineChangesHaveBuffer(it: NormalisedItinerary, minBufferMins: number): boolean {
+  return it.segments.every((seg, i) => {
+    const next = it.segments[i + 1];
+    if (!next || next.carrier === seg.carrier) return true;
+    return minutesBetween(seg.arriveUtc, next.departUtc) >= minBufferMins;
+  });
+}
+
+/**
+ * Split an Ignav self-transfer itinerary where it first lands in India and
+ * carries on within India: that's where the ticket change (and bag re-check)
+ * happens. Returns null when there's no such point.
+ */
+export function splitAtIndiaEntry(
+  it: NormalisedItinerary,
+  tzOfAirport: (iata: string) => string | null,
+): [NormalisedItinerary, NormalisedItinerary] | null {
+  const tz = (iata: string, segTz: string | null) => segTz ?? tzOfAirport(iata);
+  for (let i = 0; i < it.segments.length - 1; i++) {
+    const seg = it.segments[i];
+    const next = it.segments[i + 1];
+    const intoIndia = tz(seg.origin, seg.departTz) !== INDIA_TZ && tz(seg.dest, seg.arriveTz) === INDIA_TZ;
+    if (intoIndia && next.origin === seg.dest) {
+      return [sliceItinerary(it, 0, i + 1, true), sliceItinerary(it, i + 1, it.segments.length, false)];
+    }
+  }
+  return null;
+}
+
 interface Deps {
   store: Store;
   provider: FlightProvider;
@@ -151,9 +206,11 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
   };
 
   // ----- Stage 1: through tickets + international legs, in parallel -----
+  // Self-transfer itineraries are allowed here: Ignav's own separate-ticket
+  // combinations come back in the same call, so they cost nothing extra.
   const throughFilters: SearchFilters = {
     ...pax,
-    allowSelfTransfer: false,
+    allowSelfTransfer: true,
     timeRange: { earliestDepartHour: req.earliestDepartHour ?? null, latestArriveHour: req.latestArriveHour ?? null },
   };
   const intlFilters: SearchFilters = {
@@ -174,13 +231,34 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
   const intl = intlRes.flat().filter((i): i is NormalisedItinerary => !!i && !i.selfTransfer && hubs.includes(i.dest));
 
   const options: RouteOption[] = [];
+  let selfTransferRejected = 0;
   for (const it of through) {
-    if (it.selfTransfer) continue; // asked for protected connections only
     const ground = groundFor.get(it.origin);
     if (!ground) continue;
-    const leg: FlightLeg = { routeType: "international", itinerary: it, bag: assessBags(it, "international", req, config) };
-    options.push(buildOption("through", [leg], ground, req, s.uk_airport_arrival_mins));
+    if (!it.selfTransfer) {
+      const leg: FlightLeg = { routeType: "international", itinerary: it, bag: assessBags(it, "international", req, config) };
+      options.push(buildOption("through", [leg], ground, req, s.uk_airport_arrival_mins));
+      continue;
+    }
+    // Ignav's own separate-ticket combination: apply the same connection rules as ours.
+    const parts = splitAtIndiaEntry(it, (iata) => config.airports.find((a) => a.iata === iata)?.tz ?? null);
+    if (!parts || !airlineChangesHaveBuffer(it, minBuffer)) {
+      selfTransferRejected++;
+      continue;
+    }
+    const check = checkConnection(parts[0], parts[1], parts[0].dest, tzOf(parts[0].dest), config, { minBufferMins: minBuffer, allowOvernight });
+    if (!check.ok) {
+      selfTransferRejected++;
+      continue;
+    }
+    const legs: FlightLeg[] = [
+      { routeType: "international", itinerary: parts[0], bag: assessBags(parts[0], "international", req, config) },
+      { routeType: "domestic", itinerary: parts[1], bag: assessBags(parts[1], "domestic", req, config), bundled: true },
+    ];
+    options.push(buildOption("split", legs, ground, req, s.uk_airport_arrival_mins, check.connection));
   }
+  if (selfTransferRejected)
+    notes.push(`${selfTransferRejected} ready-made separate-ticket combinations dropped: connection too short or too long for your settings.`);
 
   // ----- Prune -----
   const cheapestThrough = through.length ? Math.min(...through.map((t) => t.price.totalGbp)) : null;

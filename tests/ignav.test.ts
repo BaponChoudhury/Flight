@@ -46,7 +46,7 @@ describe("Ignav normalisation", () => {
     expect(it0.carrier).toBe("EY");
     expect(it0.carrierName).toBe("Etihad");
     expect(it0.price.totalGbp).toBe(900); // Ignav prices cover the whole party
-    expect(it0.baggage).toEqual({ checkedPieces: null, carryOnPieces: 1 });
+    expect(it0.baggage).toEqual({ checkedPieces: 0, carryOnPieces: 1 }); // carry-on listed, no checked count → none
     expect(it0.durationMins).toBe(655);
   });
 

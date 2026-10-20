@@ -61,14 +61,16 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
         {airline} · {flights} · {formatDuration(it.durationMins)} · {via.length ? `stops in ${via.join(", ")}` : "direct"}
       </p>
       <p className="text-sm">
-        Fare {gbp(it.price.totalGbp)}
-        {it.price.fxApprox && ` (converted from ${it.price.currency} ${it.price.amount.toFixed(0)})`} · {leg.bag.note}
+        {leg.bundled ? "Fare included above (sold together as separate tickets)" : `Fare ${gbp(it.price.totalGbp)}`}
+        {!leg.bundled && it.price.fxApprox && ` (converted from ${it.price.currency} ${it.price.amount.toFixed(0)})`} · {leg.bag.note}
         {leg.bag.excessRisk && leg.bag.includedKg != null && (
           <span className="text-rose-700 dark:text-rose-300"> · allowance usually {leg.bag.includedKg}kg per bag, yours are {req.bagKg}kg</span>
         )}
       </p>
       <div className="mt-1">
-        {links === null ? (
+        {leg.bundled ? (
+          <p className="text-sm text-slate-600 dark:text-slate-400">Booked with the flight above.</p>
+        ) : links === null ? (
           <button type="button" onClick={loadLinks} disabled={state === "loading"} className="text-sm font-medium text-sky-700 underline dark:text-sky-400">
             {state === "loading" ? "Getting booking links…" : "Get booking links"}
           </button>
@@ -91,6 +93,12 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
       </div>
     </li>
   );
+}
+
+/** Airports inside a leg where the airline changes (possible ticket breaks in a self-transfer combo). */
+function airlineChanges(leg: FlightLeg): string[] {
+  const segs = leg.itinerary.segments;
+  return segs.slice(0, -1).filter((s, i) => s.carrier !== segs[i + 1].carrier).map((s) => s.dest);
 }
 
 const modeLabel = (m: string) => (m === "train" ? "Train" : m === "cab" ? "Cab" : m);
@@ -124,7 +132,8 @@ function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz:
         <div className="mt-3 space-y-4 border-t border-slate-200 pt-3 dark:border-slate-700">
           {o.kind === "split" && (
             <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-900/30 dark:text-amber-100">
-              <strong>Separate tickets:</strong> if your first flight is late and you miss the second, the second airline doesn&apos;t have to help — you may need to buy a new ticket. You&apos;ll also collect your bags and check in again at {o.hub}.
+              <strong>Separate tickets:</strong> if your first flight is late and you miss the second, the second airline doesn&apos;t have to help — you may need to buy a new ticket. You&apos;ll also collect your bags and check in again at {o.hub}
+              {o.legs[1]?.bundled && airlineChanges(o.legs[0]).length > 0 && `, and probably at ${airlineChanges(o.legs[0]).join(", ")} where the airline changes`}.
             </p>
           )}
           <ol className="space-y-3">
@@ -153,7 +162,7 @@ function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz:
                 </p>
               </li>
             )}
-            {o.legs.slice(1).map((l) => <LegBlock key={l.itinerary.providerRef} leg={l} tz={tz} req={req} />)}
+            {o.legs.slice(1).map((l, i) => <LegBlock key={`${l.itinerary.providerRef}-${i}`} leg={l} tz={tz} req={req} />)}
             <li className="border-l-2 border-emerald-600 pl-4">
               <p className="font-semibold">📍 Arrive {o.dest} {when(o.arriveUtc, destTz)}</p>
             </li>
@@ -163,7 +172,7 @@ function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz:
             <tbody>
               <tr><td>{o.ground.mode === "not set" ? `Getting to ${o.ukAirport} (not entered)` : `${modeLabel(o.ground.mode)} to ${o.ukAirport}`}</td><td className="text-right">{gbp(o.costs.ground)}</td></tr>
               {o.costs.fares.map((f, i) => (
-                <tr key={i}><td>Flight {o.legs[i].itinerary.origin} → {o.legs[i].itinerary.dest}</td><td className="text-right">{gbp(f)}</td></tr>
+                <tr key={i}><td>Flight {o.legs[i].itinerary.origin} → {o.legs[i].itinerary.dest}</td><td className="text-right">{o.legs[i].bundled ? "included" : gbp(f)}</td></tr>
               ))}
               <tr><td>Checked bags</td><td className="text-right">{o.costs.bagsUnknown ? "unknown" : gbp(o.costs.bags)}</td></tr>
               {o.costs.excessBaggage > 0 && <tr><td>Likely excess baggage (estimate)</td><td className="text-right">{gbp(o.costs.excessBaggage)}</td></tr>}

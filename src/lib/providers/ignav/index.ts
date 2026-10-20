@@ -147,7 +147,8 @@ export function normaliseOneWay(
           fxApprox: fx.approx,
         },
         baggage: {
-          checkedPieces: it.bags?.checked ?? null,
+          // A bags object that lists carry-on but no checked count means no checked bag.
+          checkedPieces: it.bags ? (it.bags.checked ?? 0) : null,
           carryOnPieces: it.bags?.carry_on ?? null,
         },
         selfTransfer: it.requires_self_transfer ?? false,

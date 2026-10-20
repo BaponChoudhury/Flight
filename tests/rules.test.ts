@@ -67,11 +67,13 @@ describe("baggage", () => {
     expect(b).toMatchObject({ status: "fee", feeGbp: 65 * 2, excessRisk: false });
   });
 
-  it("marks bag price unknown when there is no fee and no data", () => {
+  it("falls back to the any-airline (*) fee, and is unknown without one", () => {
     const noBag = itin({ origin: "LHR", dest: "DEL", departUtc: "2026-12-10T21:30:00Z", arriveUtc: "2026-12-11T05:30:00Z", gbp: 300, carrier: "ZZ", checked: 0 });
-    expect(assessBags(noBag, "international", req, config).status).toBe("unknown");
+    expect(assessBags(noBag, "international", req, config)).toMatchObject({ status: "fee", feeGbp: 70 * 2 });
+    const noFallback = { ...config, bagFees: config.bagFees.filter((f) => f.airline_code !== "*") };
+    expect(assessBags(noBag, "international", req, noFallback).status).toBe("unknown");
     const unknown = { ...noBag, baggage: { checkedPieces: null, carryOnPieces: null } };
-    expect(assessBags(unknown, "international", req, config).status).toBe("unknown");
+    expect(assessBags(unknown, "international", req, noFallback).status).toBe("unknown");
   });
 });
 

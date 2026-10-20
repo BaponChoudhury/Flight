@@ -51,6 +51,7 @@ export const DEFAULT_GROUND_ACCESS: GroundAccess[] = [
 ];
 
 export const DEFAULT_BAG_FEES: BagFee[] = [
+  { airline_code: "*", route_type: "international", bag_kg: 23, fee_gbp: 70, notes: "placeholder: any airline without its own row" },
   { airline_code: "BA", route_type: "international", bag_kg: 23, fee_gbp: 65, notes: "placeholder: check airline site" },
   { airline_code: "VS", route_type: "international", bag_kg: 23, fee_gbp: 65, notes: "placeholder: check airline site" },
   { airline_code: "AI", route_type: "international", bag_kg: 23, fee_gbp: 60, notes: "placeholder: check airline site" },

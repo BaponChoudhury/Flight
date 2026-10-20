@@ -127,3 +127,45 @@ describe("runSearch (fake Ignav)", () => {
     expect(res.errors).toEqual(["IGNAV_API_KEY is not set on the server (36 searches)"]);
   });
 });
+
+describe("Ignav self-transfer itineraries", () => {
+  it("splits where the trip enters India so our connection rules apply", async () => {
+    const { splitAtIndiaEntry } = await import("@/lib/engine/search");
+    const seg = (o: string, d: string, dep: string, arr: string, oTz: string, dTz: string, c: string) => ({
+      carrier: c, carrierName: null, flightNumber: "1", origin: o, dest: d, departUtc: dep, arriveUtc: arr, departTz: oTz, arriveTz: dTz, durationMins: 0, aircraft: null,
+    });
+    const it = {
+      provider: "ignav" as const, providerRef: "x", origin: "LHR", dest: "GAU", departUtc: "2026-12-10T08:35:00Z", arriveUtc: "2026-12-11T03:30:00Z", durationMins: 0,
+      carrier: "QR", carrierName: "Qatar", price: { amount: 1943, currency: "GBP", totalGbp: 1943, verified: true, fxApprox: false },
+      baggage: { checkedPieces: 1, carryOnPieces: 1 }, selfTransfer: true, observedAt: null, fetchedAt: "x", fromCache: false,
+      segments: [
+        seg("LHR", "DOH", "2026-12-10T08:35:00Z", "2026-12-10T15:00:00Z", "Europe/London", "Asia/Qatar", "QR"),
+        seg("DOH", "DEL", "2026-12-10T17:10:00Z", "2026-12-10T21:00:00Z", "Asia/Qatar", "Asia/Kolkata", "QR"),
+        seg("DEL", "GAU", "2026-12-11T01:10:00Z", "2026-12-11T03:30:00Z", "Asia/Kolkata", "Asia/Kolkata", "AI"),
+      ],
+    };
+    const parts = splitAtIndiaEntry(it, () => null)!;
+    expect(parts[0].segments.map((s) => s.dest)).toEqual(["DOH", "DEL"]);
+    expect(parts[0].price.totalGbp).toBe(1943);
+    expect(parts[1].origin).toBe("DEL");
+    expect(parts[1].carrier).toBe("AI");
+    expect(parts[1].price.totalGbp).toBe(0); // included in the first part
+    expect(parts[1].baggage.checkedPieces).toBeNull(); // domestic defaults apply
+    // Never enters India mid-trip → can't place the ticket change.
+    expect(splitAtIndiaEntry({ ...it, segments: [it.segments[0]] }, () => null)).toBeNull();
+  });
+});
+
+describe("self-transfer buffers", () => {
+  it("requires the minimum buffer at every change of airline", async () => {
+    const { airlineChangesHaveBuffer } = await import("@/lib/engine/search");
+    const seg = (c: string, dep: string, arr: string) => ({ carrier: c, carrierName: null, flightNumber: "1", origin: "A", dest: "B", departUtc: dep, arriveUtc: arr, departTz: null, arriveTz: null, durationMins: 0, aircraft: null });
+    const base = { segments: [
+      seg("U2", "2026-12-10T06:00:00Z", "2026-12-10T09:00:00Z"),
+      seg("SV", "2026-12-10T11:00:00Z", "2026-12-10T16:00:00Z"), // 2h after easyJet lands
+      seg("SV", "2026-12-10T17:00:00Z", "2026-12-10T21:00:00Z"), // same airline: 1h is fine
+    ] } as never;
+    expect(airlineChangesHaveBuffer(base, 180)).toBe(false);
+    expect(airlineChangesHaveBuffer(base, 120)).toBe(true);
+  });
+});
