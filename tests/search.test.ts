@@ -120,6 +120,30 @@ describe("runSearch (fake Ignav)", () => {
     expect(again.notes.join(" ")).toContain("Not searching");
   });
 
+  it("searches the user's airports, keeping results that depart from any London airport", async () => {
+    // The fake answers for whatever origin is asked; a "LON" search returns flights that
+    // actually leave from LHR, which must not be dropped for lacking a ground entry.
+    const lonAsLhr: FlightProvider = {
+      ...fakeIgnav,
+      searchOneWay: async (o, d, date, f, ctx) =>
+        (await fakeIgnav.searchOneWay(o === "LON" ? "LHR" : o, d, date, f, ctx)),
+    };
+    const res = await runSearch({ ...req, originArea: "Leeds", ukAirports: ["LON"], infants: 1 }, { store, provider: lonAsLhr });
+    expect(res.errors).toEqual([]);
+    expect(res.options.length).toBeGreaterThan(0);
+    expect(new Set(res.options.map((o) => o.ukAirport))).toEqual(new Set(["LHR"]));
+    expect(res.options.every((o) => o.ground.mode === "not set")).toBe(true); // no Leeds prices configured
+    expect(res.stats.paidCalls).toBeLessThanOrEqual(1 + 8 + 16); // one origin: 1 through + 8 international + domestic
+  });
+
+  it("rejects bad passenger and airport input", async () => {
+    const { validateRequest } = await import("@/lib/engine/search");
+    expect(validateRequest({ ...req, infants: 3, adults: 2 })).toMatch(/infant/);
+    expect(validateRequest({ ...req, dest: "Guwahati" })).toMatch(/destination/);
+    expect(validateRequest({ ...req, ukAirports: [] })).toMatch(/UK airports/);
+    expect(validateRequest({ ...req, ukAirports: ["BHX", "MAN", "LON"], infants: 1 })).toBeNull();
+  });
+
   it("reports a clear error when every call fails", async () => {
     const broken: FlightProvider = { ...fakeIgnav, searchOneWay: async () => { throw new Error("IGNAV_API_KEY is not set on the server"); } };
     const res = await runSearch(req, { store, provider: broken });

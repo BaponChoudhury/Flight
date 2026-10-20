@@ -62,7 +62,7 @@ export function buildOneWayRequest(
     adults: filters.adults,
     children: filters.children,
     infants_in_seat: 0,
-    infants_on_lap: 0,
+    infants_on_lap: filters.infants ?? 0,
     cabin_class: "economy",
     allow_self_transfer: filters.allowSelfTransfer,
     market: settings.market,
@@ -204,6 +204,7 @@ export const ignavProvider: FlightProvider = {
       ignav_id: providerRef,
       adults: filters.adults,
       children: filters.children,
+      infants_on_lap: filters.infants ?? 0,
       market: ctx.settings.market,
     };
     const res = await ctx.call({

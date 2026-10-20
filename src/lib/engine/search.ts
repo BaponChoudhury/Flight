@@ -18,6 +18,7 @@ import { countPaid, createCallContext } from "./calls";
 import { domesticDatesNeeded, hubsToSearch, pruneInternational } from "./prune";
 import { aggregateCosts, assessBags, checkConnection, groundCost } from "./rules";
 import { addDays, addMinutes, localDate, localHour, minutesBetween } from "./time";
+import { knownTz } from "@/lib/config/places";
 
 const KEEP_PER_AXIS = 150;
 
@@ -41,12 +42,16 @@ export function selectForReturn<T extends { costs: { total: number }; totalMins:
 
 export function validateRequest(r: SearchRequest): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(r.date)) return "Pick a departure date.";
-  if (!r.dest) return "Pick a destination.";
-  if (!r.originArea) return "Pick where you're travelling from.";
+  if (!/^[A-Z]{3}$/.test(r.dest ?? "")) return "Pick a destination airport in India.";
+  if (!r.originArea?.trim()) return "Enter where you're travelling from.";
+  if (r.ukAirports != null && (!r.ukAirports.length || r.ukAirports.length > 5 || r.ukAirports.some((a) => !/^[A-Z]{3}$/.test(a))))
+    return "Pick between 1 and 5 UK airports.";
   if (!(r.adults >= 1 && r.adults <= 9)) return "Adults must be between 1 and 9.";
   if (!(r.children >= 0 && r.children <= 8)) return "Children must be between 0 and 8.";
+  const infants = r.infants ?? 0;
+  if (!(infants >= 0 && infants <= r.adults)) return "Each infant needs an adult (at most one infant per adult).";
   if (!(r.bags >= 0 && r.bags <= 3)) return "Checked bags must be between 0 and 3 per person.";
-  if (!(r.bagKg >= 0 && r.bagKg <= 32)) return "Bag weight must be between 0 and 32 kg.";
+  if (r.bagKg != null && !(r.bagKg >= 0 && r.bagKg <= 32)) return "Bag weight must be between 0 and 32 kg.";
   if (r.minBufferMins != null && !(r.minBufferMins >= 60 && r.minBufferMins <= 720))
     return "Time to change flights must be between 1 and 12 hours.";
   if (r.flexDays !== 0 && r.flexDays !== 1) return "Flexibility must be 0 or ±1 day.";
@@ -171,26 +176,27 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
   const minBuffer = req.minBufferMins ?? s.min_buffer_mins;
   const allowOvernight = !!req.allowOvernight;
   const maxBuffer = allowOvernight ? s.overnight_max_buffer_mins : s.max_buffer_mins;
-  const pax = { adults: req.adults, children: req.children };
+  const pax = { adults: req.adults, children: req.children, infants: req.infants ?? 0 };
 
-  const tzOf = (iata: string) => config.airports.find((a) => a.iata === iata)?.tz ?? "Asia/Kolkata";
+  const tzOf = (iata: string) => config.airports.find((a) => a.iata === iata)?.tz ?? knownTz(iata) ?? "Asia/Kolkata";
   const dates = req.flexDays === 1 ? [addDays(req.date, -1), req.date, addDays(req.date, 1)] : [req.date];
 
-  const groundFor = new Map<string, GroundAccess>();
-  for (const g of config.groundAccess.filter((g) => g.origin_area === req.originArea)) {
-    const prev = groundFor.get(g.airport);
-    if (!prev || groundCost(g, 1) < groundCost(prev, 1)) groundFor.set(g.airport, g);
+  // Admin defaults for this home area, if any ("Stafford" matches "Stafford, Staffordshire").
+  const area = req.originArea.trim().toLowerCase();
+  const configured = new Map<string, GroundAccess>();
+  for (const g of config.groundAccess.filter((g) => area.startsWith(g.origin_area.toLowerCase()))) {
+    const prev = configured.get(g.airport);
+    if (!prev || groundCost(g, 1) < groundCost(prev, 1)) configured.set(g.airport, g);
   }
-  const ukAirports = config.airports
-    .filter((a) => a.role === "uk_origin" && a.enabled)
-    .map((a) => a.iata)
-    .filter((a) => !req.ukAirports?.length || req.ukAirports.includes(a));
-  // Airports without a configured price still get searched; the user enters
-  // their own train/cab prices on the results page.
-  for (const a of ukAirports) {
-    if (!groundFor.has(a))
-      groundFor.set(a, { origin_area: req.originArea, airport: a, mode: "not set", cost_gbp: 0, per_person: false, duration_mins: 0, notes: "" });
-  }
+  // Every departure airport gets a ground entry (LON results come back as LHR/LGW/STN…);
+  // without a configured one the user enters their own train/cab prices on the results page.
+  const groundFor = {
+    get: (airport: string): GroundAccess =>
+      configured.get(airport) ?? { origin_area: req.originArea, airport, mode: "not set", cost_gbp: 0, per_person: false, duration_mins: 0, notes: "" },
+  };
+  const ukAirports = req.ukAirports?.length
+    ? req.ukAirports
+    : config.airports.filter((a) => a.role === "uk_origin" && a.enabled).map((a) => a.iata);
   const allHubs = config.airports.filter((a) => a.role === "india_hub" && a.enabled).map((a) => a.iata);
   const hubs = hubsToSearch(allHubs, req.dest, config.hubRoutes, s.hub_route_recheck_days);
   const skippedHubs = allHubs.filter((h) => !hubs.includes(h) && h !== req.dest);
@@ -234,7 +240,6 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
   let selfTransferRejected = 0;
   for (const it of through) {
     const ground = groundFor.get(it.origin);
-    if (!ground) continue;
     if (!it.selfTransfer) {
       const leg: FlightLeg = { routeType: "international", itinerary: it, bag: assessBags(it, "international", req, config) };
       options.push(buildOption("through", [leg], ground, req, s.uk_airport_arrival_mins));
@@ -325,7 +330,6 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
     const tz = tzOf(hub);
     for (const i of arrivals) {
       const ground = groundFor.get(i.origin);
-      if (!ground) continue;
       const intlLeg: FlightLeg = { routeType: "international", itinerary: i, bag: assessBags(i, "international", req, config) };
       const combos: RouteOption[] = [];
       for (const d of doms) {

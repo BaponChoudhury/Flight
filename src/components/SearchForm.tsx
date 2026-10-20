@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { INDIA_AIRPORTS, indiaLabel, LONDON, parseIndiaDestination, UK_AIRPORTS, type NearbyAirport } from "@/lib/config/places";
 import type { AppConfig, SearchRequest } from "@/lib/types";
 
 const field = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base dark:border-slate-600 dark:bg-slate-800";
@@ -11,6 +12,9 @@ function defaultDate() {
   return d.toISOString().slice(0, 10);
 }
 
+const ukName = (code: string) => UK_AIRPORTS.find((a) => a.code === code)?.name ?? code;
+const DEFAULT_AIRPORTS = [LONDON, "MAN", "BHX"];
+
 export function SearchForm({
   config,
   busy,
@@ -20,51 +24,139 @@ export function SearchForm({
   busy: boolean;
   onSearch: (req: SearchRequest) => void;
 }) {
-  const areas = [...new Set(config.groundAccess.map((g) => g.origin_area))];
-  const dests = config.airports.filter((a) => a.role === "destination" && a.enabled);
-  const ukAirports = config.airports.filter((a) => a.role === "uk_origin" && a.enabled);
-
-  const [req, setReq] = useState<SearchRequest>({
-    originArea: areas[0] ?? "",
-    dest: dests.find((d) => d.iata === "GAU")?.iata ?? dests[0]?.iata ?? "",
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState(indiaLabel("GAU"));
+  const [located, setLocated] = useState<{ name: string; airports: NearbyAirport[] } | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locateMsg, setLocateMsg] = useState("");
+  const [airports, setAirports] = useState<string[]>([]);
+  const [formError, setFormError] = useState("");
+  const [more, setMore] = useState(false);
+  const [bufferHours, setBufferHours] = useState(String(config.settings.min_buffer_mins / 60));
+  const [req, setReq] = useState<Omit<SearchRequest, "originArea" | "dest" | "ukAirports">>({
     date: defaultDate(),
     flexDays: 0,
     adults: 1,
     children: 0,
+    infants: 0,
     bags: 1,
-    bagKg: 23,
     earliestDepartHour: null,
     latestArriveHour: null,
     minBufferMins: config.settings.min_buffer_mins,
     allowOvernight: false,
-    ukAirports: ukAirports.map((a) => a.iata),
   });
-  const [more, setMore] = useState(false);
-  const [bufferHours, setBufferHours] = useState(String(config.settings.min_buffer_mins / 60));
-  const set = <K extends keyof SearchRequest>(k: K, v: SearchRequest[K]) => setReq((r) => ({ ...r, [k]: v }));
+  const set = <K extends keyof typeof req>(k: K, v: (typeof req)[K]) => setReq((r) => ({ ...r, [k]: v }));
   const hourOpt = (v: string) => (v === "" ? null : Number(v));
 
+  async function findAirports() {
+    const q = from.trim();
+    if (q.length < 2 || q === located?.name) return;
+    setLocating(true);
+    setLocateMsg("");
+    try {
+      const res = await fetch(`/api/locate?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setLocated(null);
+        setLocateMsg(data.error ?? "Couldn't look that up.");
+        if (!airports.length) setAirports(DEFAULT_AIRPORTS);
+        return;
+      }
+      setLocated({ name: data.place.name, airports: data.airports });
+      setAirports(data.airports.map((a: NearbyAirport) => a.code));
+    } catch {
+      setLocateMsg("Couldn't look that up — pick your airports below.");
+      if (!airports.length) setAirports(DEFAULT_AIRPORTS);
+    } finally {
+      setLocating(false);
+    }
+  }
+
+  const toggle = (code: string, on: boolean) => setAirports((a) => (on ? [...new Set([...a, code])] : a.filter((x) => x !== code)));
+  const shown = [...new Set([...(located?.airports.map((a) => a.code) ?? []), ...airports])];
+  const kmOf = (code: string) => located?.airports.find((a) => a.code === code)?.km;
+  const addable = UK_AIRPORTS.filter((a) => !shown.includes(a.code));
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const dest = parseIndiaDestination(to);
+    if (!from.trim()) return setFormError("Enter where you're travelling from.");
+    if (!dest) return setFormError("Pick a destination from the list, or type its 3-letter airport code.");
+    if (!airports.length) return setFormError("Pick at least one UK airport.");
+    if (airports.length > 5) return setFormError("Pick at most 5 UK airports (each one adds searches).");
+    if ((req.infants ?? 0) > req.adults) return setFormError("Each infant needs an adult (one infant per adult).");
+    setFormError("");
+    onSearch({ ...req, originArea: located?.name ?? from.trim(), dest, ukAirports: airports });
+  }
+
   return (
-    <form
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSearch(req);
-      }}
-    >
+    <form className="space-y-4" onSubmit={submit}>
+      <div>
+        <label className={label} htmlFor="from">From (UK town or postcode)</label>
+        <div className="flex gap-2">
+          <input
+            id="from"
+            className={field}
+            placeholder="e.g. Stafford or ST16 2AA"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            onBlur={findAirports}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                findAirports();
+              }
+            }}
+            autoComplete="address-level2"
+            required
+          />
+          <button type="button" onClick={findAirports} className="shrink-0 rounded-lg border border-slate-300 px-3 text-sm font-medium dark:border-slate-600">
+            {locating ? "…" : "Find airports"}
+          </button>
+        </div>
+        {locateMsg && <p className="mt-1 text-sm text-amber-800 dark:text-amber-300">{locateMsg}</p>}
+      </div>
+
+      {shown.length > 0 && (
+        <fieldset>
+          <legend className={label}>
+            Fly from {located ? `(nearest to ${located.name})` : ""}
+          </legend>
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
+            {shown.map((code) => (
+              <label key={code} className="flex items-center gap-1.5 text-base">
+                <input type="checkbox" className="h-5 w-5" checked={airports.includes(code)} onChange={(e) => toggle(code, e.target.checked)} />
+                {ukName(code)}
+                {kmOf(code) != null && <span className="text-sm text-slate-500">{kmOf(code)} km</span>}
+              </label>
+            ))}
+          </div>
+          {addable.length > 0 && (
+            <select
+              aria-label="Add another UK airport"
+              className="mt-2 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-800"
+              value=""
+              onChange={(e) => e.target.value && toggle(e.target.value, true)}
+            >
+              <option value="">+ Add another airport</option>
+              {addable.map((a) => (
+                <option key={a.code} value={a.code}>{a.name} ({a.code})</option>
+              ))}
+            </select>
+          )}
+          <p className="mt-1 text-xs text-slate-500">&quot;London (all airports)&quot; searches Heathrow, Gatwick, Stansted and others in one go.</p>
+        </fieldset>
+      )}
+
+      <div>
+        <label className={label} htmlFor="to">To (airport in India)</label>
+        <input id="to" list="india-airports" className={field} placeholder="e.g. Guwahati" value={to} onChange={(e) => setTo(e.target.value)} onFocus={(e) => e.target.select()} required />
+        <datalist id="india-airports">
+          {INDIA_AIRPORTS.map((a) => <option key={a.code} value={`${a.city} (${a.code})`} />)}
+        </datalist>
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={label} htmlFor="from">From</label>
-          <select id="from" className={field} value={req.originArea} onChange={(e) => set("originArea", e.target.value)}>
-            {areas.map((a) => <option key={a}>{a}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className={label} htmlFor="to">To</label>
-          <select id="to" className={field} value={req.dest} onChange={(e) => set("dest", e.target.value)}>
-            {dests.map((d) => <option key={d.iata} value={d.iata}>{d.city} ({d.iata})</option>)}
-          </select>
-        </div>
         <div>
           <label className={label} htmlFor="date">Leaving on</label>
           <input id="date" type="date" className={field} value={req.date} onChange={(e) => set("date", e.target.value)} required />
@@ -76,46 +168,51 @@ export function SearchForm({
             <option value={1}>± 1 day (3× searches)</option>
           </select>
         </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
         <div>
           <label className={label} htmlFor="adults">Adults</label>
           <input id="adults" type="number" min={1} max={9} className={field} value={req.adults} onChange={(e) => set("adults", Number(e.target.value))} />
         </div>
         <div>
-          <label className={label} htmlFor="children">Children</label>
+          <label className={label} htmlFor="children">Children <span className="font-normal text-slate-500">2–11</span></label>
           <input id="children" type="number" min={0} max={8} className={field} value={req.children} onChange={(e) => set("children", Number(e.target.value))} />
         </div>
+        <div>
+          <label className={label} htmlFor="infants">Infants <span className="font-normal text-slate-500">under 2</span></label>
+          <input id="infants" type="number" min={0} max={req.adults} className={field} value={req.infants ?? 0} onChange={(e) => set("infants", Number(e.target.value))} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
         <div>
           <label className={label} htmlFor="bags">Checked bags each</label>
           <input id="bags" type="number" min={0} max={3} className={field} value={req.bags} onChange={(e) => set("bags", Number(e.target.value))} />
         </div>
         <div>
-          <label className={label} htmlFor="kg">Weight per bag (kg)</label>
-          <input id="kg" type="number" min={0} max={32} className={field} value={req.bagKg} onChange={(e) => set("bagKg", Number(e.target.value))} />
+          <label className={label} htmlFor="buf">Change time (hours)</label>
+          <input
+            id="buf"
+            type="number"
+            inputMode="decimal"
+            min={1}
+            max={12}
+            step={0.25}
+            className={field}
+            value={bufferHours}
+            onChange={(e) => {
+              setBufferHours(e.target.value);
+              const h = Number(e.target.value);
+              if (e.target.value !== "" && Number.isFinite(h)) set("minBufferMins", Math.round(h * 60));
+            }}
+            required
+          />
         </div>
       </div>
-
-      <div>
-        <label className={label} htmlFor="buf">Time to change from international to domestic flight (hours)</label>
-        <input
-          id="buf"
-          type="number"
-          inputMode="decimal"
-          min={1}
-          max={12}
-          step={0.25}
-          className={field}
-          value={bufferHours}
-          onChange={(e) => {
-            setBufferHours(e.target.value);
-            const h = Number(e.target.value);
-            if (e.target.value !== "" && Number.isFinite(h)) set("minBufferMins", Math.round(h * 60));
-          }}
-          required
-        />
-        <p className="mt-1 text-xs text-slate-500">
-          For separate tickets: immigration, collecting bags and checking in again. We add 45 min if you also change terminal (e.g. Delhi T3 → T1).
-        </p>
-      </div>
+      <p className="-mt-2 text-xs text-slate-500">
+        Change time = time to switch from the international to the domestic flight on separate tickets (immigration, bags, check-in). We add 45 min if you also change terminal.
+      </p>
 
       <button type="button" className="text-sm font-medium text-sky-700 underline dark:text-sky-400" onClick={() => setMore((m) => !m)}>
         {more ? "Hide" : "More"} options
@@ -123,24 +220,6 @@ export function SearchForm({
 
       {more && (
         <div className="space-y-3 rounded-lg bg-slate-100 p-3 dark:bg-slate-800/60">
-          <div>
-            <span className={label}>UK airports</span>
-            <div className="flex flex-wrap gap-3">
-              {ukAirports.map((a) => (
-                <label key={a.iata} className="flex items-center gap-1.5 text-base">
-                  <input
-                    type="checkbox"
-                    className="h-5 w-5"
-                    checked={req.ukAirports?.includes(a.iata) ?? true}
-                    onChange={(e) =>
-                      set("ukAirports", e.target.checked ? [...(req.ukAirports ?? []), a.iata] : (req.ukAirports ?? []).filter((x) => x !== a.iata))
-                    }
-                  />
-                  {a.iata}
-                </label>
-              ))}
-            </div>
-          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={label} htmlFor="edh">Leave UK after</label>
@@ -164,11 +243,8 @@ export function SearchForm({
         </div>
       )}
 
-      <button
-        type="submit"
-        disabled={busy || !req.ukAirports?.length}
-        className="w-full rounded-lg bg-sky-700 px-4 py-3 text-lg font-semibold text-white disabled:opacity-50"
-      >
+      {formError && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{formError}</p>}
+      <button type="submit" disabled={busy || locating} className="w-full rounded-lg bg-sky-700 px-4 py-3 text-lg font-semibold text-white disabled:opacity-50">
         {busy ? "Searching… (up to a minute)" : "Find flights"}
       </button>
     </form>

@@ -33,9 +33,19 @@ npm run dev                  # http://localhost:3000
 
 All tables have row-level security enabled with no policies, so the public anon key can't read them. The server uses the service-role key.
 
+## Search form
+
+- **From:** any UK town or postcode. `/api/locate` looks it up with [postcodes.io](https://postcodes.io), which is free and needs no key. It then suggests the 2 nearest regional airports within 250km, plus **London (all airports)**. The list is in `src/lib/config/places.ts`. You can untick airports or add others. If the lookup fails, you pick airports by hand.
+  - `LON` is sent to Ignav as one origin and returns flights from LHR, LGW, STN, LTN and so on in a single call.
+  - The server needs network access to `api.postcodes.io`.
+- **To:** any Indian airport. Pick from the list (about 70 airports) or type a 3-letter code.
+- **Passengers:** adults, children (2–11) and infants (under 2, on a lap; at most one per adult). Infants go to Ignav as `infants_on_lap`. They don't count towards train fares or checked bags.
+- **Bags:** checked bags per person. No weight is asked. Domestic allowances below a standard 23kg bag get an "Excess baggage risk" badge, but no cost is added.
+- **Change time:** hours allowed for switching from the international to the domestic flight on separate tickets (default 3).
+
 ## How a search works
 
-1. **UK origins:** BHX, MAN, LHR and LGW (all enabled ones, or the ones ticked under "More options").
+1. **UK origins:** the airports picked on the form (up to 5).
 2. **Stage 1** (in parallel):
    - **A. Through tickets:** UK airport → destination, protected connections only (`allow_self_transfer: false`).
      Self-transfer itineraries are allowed in this same call (no extra cost). Ignav's ready-made separate-ticket combinations are split where they enter India. They have to meet the same buffer rules there, and also at every change of airline earlier in the trip. They're shown as split tickets whose second flight is "included" in the first price.

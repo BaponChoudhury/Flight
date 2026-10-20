@@ -40,7 +40,7 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
     const res = await fetch("/api/booking-links", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ providerRef: it.providerRef, adults: req.adults, children: req.children }),
+      body: JSON.stringify({ providerRef: it.providerRef, adults: req.adults, children: req.children, infants: req.infants ?? 0 }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -64,7 +64,9 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
         {leg.bundled ? "Fare included above (sold together as separate tickets)" : `Fare ${gbp(it.price.totalGbp)}`}
         {!leg.bundled && it.price.fxApprox && ` (converted from ${it.price.currency} ${it.price.amount.toFixed(0)})`} · {leg.bag.note}
         {leg.bag.excessRisk && leg.bag.includedKg != null && (
-          <span className="text-rose-700 dark:text-rose-300"> · allowance usually {leg.bag.includedKg}kg per bag, yours are {req.bagKg}kg</span>
+          <span className="text-rose-700 dark:text-rose-300">
+            {" "}· allowance usually {leg.bag.includedKg}kg per bag{req.bagKg != null ? `, yours are ${req.bagKg}kg` : " — pack lighter or expect excess fees"}
+          </span>
         )}
       </p>
       <div className="mt-1">
@@ -99,6 +101,13 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
 function airlineChanges(leg: FlightLeg): string[] {
   const segs = leg.itinerary.segments;
   return segs.slice(0, -1).filter((s, i) => s.carrier !== segs[i + 1].carrier).map((s) => s.dest);
+}
+
+function travellers(req: SearchRequest) {
+  const parts = [`${req.adults} adult${req.adults > 1 ? "s" : ""}`];
+  if (req.children) parts.push(`${req.children} child${req.children > 1 ? "ren" : ""}`);
+  if (req.infants) parts.push(`${req.infants} infant${req.infants > 1 ? "s" : ""}`);
+  return parts.join(", ");
 }
 
 const modeLabel = (m: string) => (m === "train" ? "Train" : m === "cab" ? "Cab" : m);
@@ -177,7 +186,7 @@ function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz:
               <tr><td>Checked bags</td><td className="text-right">{o.costs.bagsUnknown ? "unknown" : gbp(o.costs.bags)}</td></tr>
               {o.costs.excessBaggage > 0 && <tr><td>Likely excess baggage (estimate)</td><td className="text-right">{gbp(o.costs.excessBaggage)}</td></tr>}
               {o.costs.hotel > 0 && <tr><td>Hotel (estimate)</td><td className="text-right">{gbp(o.costs.hotel)}</td></tr>}
-              <tr className="font-bold"><td>Total, {req.adults + req.children} traveller{req.adults + req.children > 1 ? "s" : ""}</td><td className="text-right">{gbp(o.costs.total)}</td></tr>
+              <tr className="font-bold"><td>Total, {travellers(req)}</td><td className="text-right">{gbp(o.costs.total)}</td></tr>
             </tbody>
           </table>
           <p className="text-xs text-slate-500">Price as of {formatLocalTime(o.priceAsOf, UK_TZ)} UK time. Fares change — check before booking.</p>

@@ -156,14 +156,15 @@ export interface SearchRequest {
   date: string; // YYYY-MM-DD, UK local departure date
   flexDays: 0 | 1;
   adults: number;
-  children: number;
-  bags: number; // checked bags per passenger
-  bagKg: number; // weight of each bag
+  children: number; // 2–11
+  infants?: number; // under 2, on a lap; no seat or bag
+  bags: number; // checked bags per passenger (adults + children)
+  bagKg?: number | null; // weight of each bag; optional
   earliestDepartHour?: number | null; // UK local
   latestArriveHour?: number | null; // destination local
   minBufferMins?: number | null;
   allowOvernight?: boolean;
-  ukAirports?: string[] | null;
+  ukAirports?: string[] | null; // e.g. ["BHX", "MAN", "LON"]; LON = all London airports
 }
 
 export interface BagAssessment {

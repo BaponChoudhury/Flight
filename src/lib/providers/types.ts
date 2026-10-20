@@ -3,6 +3,7 @@ import type { BookingLink, CallLogEntry, NormalisedItinerary, ProviderId, Settin
 export interface SearchFilters {
   adults: number;
   children: number;
+  infants?: number;
   maxStops?: number | null;
   allowSelfTransfer: boolean;
   /** Hours (0–23) in the departure airport's local time, and arrival hours in the arrival airport's local time. */
