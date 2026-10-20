@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { runSearch } from "@/lib/engine/search";
-import { buildOneWayRequest, normaliseOneWay, type IgnavFareSearchResponse } from "@/lib/providers/ignav";
+import { buildOneWayRequest, normaliseOneWay, normaliseRoundTrip, type IgnavFareSearchResponse } from "@/lib/providers/ignav";
 import type { FlightProvider } from "@/lib/providers/types";
 import { createMemoryStore, type Store } from "@/lib/store";
 import type { SearchRequest } from "@/lib/types";
@@ -46,6 +46,10 @@ function fakeResponse(origin: string, dest: string, date: string): IgnavFareSear
       itineraries.push(it(`${origin}-${dest}-${date}-b`, 380, [segment(origin, dest, `${date}T11:00:00Z`, 600, "BA", "143")], 0));
       itineraries.push(it(`${origin}-${dest}-${date}-c`, 2500, [segment(origin, dest, `${date}T12:00:00Z`, 560, "AI", "170")], 2));
     }
+  } else if (origin === "GAU" && DOMESTIC_HUBS.has(dest)) {
+    // Way home: GAU → hub.
+    itineraries.push(it(`GAU-${dest}-${date}-1`, 60, [segment("GAU", dest, `${date}T03:00:00Z`, 150, "6E", "202")], 1));
+    itineraries.push(it(`GAU-${dest}-${date}-2`, 75, [segment("GAU", dest, `${date}T08:00:00Z`, 150, "6E", "204")], 1));
   } else if (DOMESTIC_HUBS.has(origin)) {
     itineraries.push(it(`${origin}-GAU-${date}-1`, 70, [segment(origin, "GAU", `${date}T07:00:00Z`, 150, "6E", "201")], 1));
     itineraries.push(it(`${origin}-GAU-${date}-2`, 55, [segment(origin, "GAU", `${date}T12:00:00Z`, 150, "6E", "203")], 1));
@@ -72,6 +76,31 @@ const fakeIgnav: FlightProvider = {
       },
     });
     return normaliseOneWay(res.raw as IgnavFareSearchResponse, { ...res, passengers: filters.adults + filters.children }, ctx.settings).itineraries;
+  },
+  async searchRoundTrip(origin, dest, date, returnDate, filters, ctx) {
+    const body = { ...buildOneWayRequest(origin, dest, date, filters, ctx.settings), return_date: returnDate };
+    const res = await ctx.call({
+      provider: "ignav",
+      endpoint: "/api/fares/round-trip",
+      body,
+      label: `${origin}⇄${dest}`,
+      fetcher: async () => {
+        networkCalls++;
+        // Pair each outbound with a mirrored inbound leaving `dest` at 13:00Z on the return date.
+        const outbound = fakeResponse(origin, dest, date);
+        return {
+          ...outbound,
+          return_date: returnDate,
+          itineraries: outbound.itineraries.map((i) => {
+            const back = [...i.outbound.segments].reverse().map((s, k) =>
+              segment(s.arrival_airport, s.departure_airport, `${returnDate}T${String(13 + k * 6).padStart(2, "0")}:00:00Z`, s.duration_minutes, s.marketing_carrier_code!, `${s.flight_number}R`),
+            );
+            return { ...i, price: { ...i.price, amount: Math.round(i.price.amount * 1.6) }, inbound: { carrier: back[0].marketing_carrier_code, duration_minutes: null, segments: back } };
+          }),
+        };
+      },
+    });
+    return normaliseRoundTrip(res.raw as IgnavFareSearchResponse, { ...res, passengers: filters.adults + filters.children }, ctx.settings).trips;
   },
   async getBookingLinks() {
     return [];
@@ -191,5 +220,44 @@ describe("self-transfer buffers", () => {
     ] } as never;
     expect(airlineChangesHaveBuffer(base, 180)).toBe(false);
     expect(airlineChangesHaveBuffer(base, 120)).toBe(true);
+  });
+});
+
+describe("return trips", () => {
+  const rt: SearchRequest = { ...req, returnDate: "2027-01-05" };
+
+  it("uses return fares and adds the domestic flight home", async () => {
+    networkCalls = 0;
+    const store = createMemoryStore();
+    const res = await runSearch(rt, { store, provider: fakeIgnav });
+    expect(res.errors).toEqual([]);
+    // 4 through + 32 international (return fares) + 16 domestic out + 8 domestic home (GAU → each hub).
+    expect(res.stats.paidCalls).toBe(4 + 32 + 16 + 8);
+    expect(res.options.length).toBeGreaterThan(0);
+    for (const o of res.options) {
+      expect(o.back).not.toBeNull();
+      expect(o.totalMins).toBe(o.outMins + o.back!.totalMins);
+    }
+    const split = res.options.filter((o) => o.kind === "split");
+    expect(split.length).toBeGreaterThan(0);
+    for (const o of split) {
+      const [homeDom, homeIntl] = o.back!.legs;
+      expect(homeDom.itinerary.origin).toBe("GAU");
+      expect(homeIntl.bundled).toBe(true); // priced on the outbound return fare
+      expect(homeIntl.itinerary.price.totalGbp).toBe(0);
+      expect(o.back!.connection!.bufferMins).toBeGreaterThanOrEqual(o.back!.connection!.minRequiredMins);
+      // Ground travel counted both ways (Stafford train £15–£45 per person, 2 people).
+      expect(o.costs.ground).toBe(o.ground.cost_gbp * 2 * 2);
+    }
+    const through = res.options.find((o) => o.kind === "through")!;
+    expect(through.back!.legs).toHaveLength(1);
+    expect(through.back!.legs[0].itinerary.segments.map((s) => s.dest)).toEqual(["DEL", through.ukAirport]);
+  });
+
+  it("rejects a return before departure", async () => {
+    const { validateRequest } = await import("@/lib/engine/search");
+    expect(validateRequest({ ...rt, returnDate: "2026-12-10" })).toMatch(/after the departure/);
+    expect(validateRequest({ ...rt, returnDate: "2026-12-11", flexDays: 1 })).toMatch(/after the departure/);
+    expect(validateRequest(rt)).toBeNull();
   });
 });

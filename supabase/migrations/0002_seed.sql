@@ -72,6 +72,7 @@ insert into settings (key, value) values
   ('max_intl_per_group', '12'::jsonb),
   ('max_domestic_per_intl', '3'::jsonb),
   ('uk_airport_arrival_mins', '180'::jsonb),
+  ('uk_arrival_exit_mins', '60'::jsonb),
   ('cache_ttl_mins', '120'::jsonb),
   ('market', '"GB"'::jsonb),
   ('fx_to_gbp', '{"GBP":1,"USD":0.75,"EUR":0.85,"INR":0.0089}'::jsonb),

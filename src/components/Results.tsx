@@ -61,7 +61,7 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
         {airline} · {flights} · {formatDuration(it.durationMins)} · {via.length ? `stops in ${via.join(", ")}` : "direct"}
       </p>
       <p className="text-sm">
-        {leg.bundled ? "Fare included above (sold together as separate tickets)" : `Fare ${gbp(it.price.totalGbp)}`}
+        {leg.bundled ? "Fare included above" : `Fare ${gbp(it.price.totalGbp)}`}
         {!leg.bundled && it.price.fxApprox && ` (converted from ${it.price.currency} ${it.price.amount.toFixed(0)})`} · {leg.bag.note}
         {leg.bag.excessRisk && leg.bag.includedKg != null && (
           <span className="text-rose-700 dark:text-rose-300">
@@ -110,6 +110,21 @@ function travellers(req: SearchRequest) {
   return parts.join(", ");
 }
 
+function ConnectionStep({ c }: { c: NonNullable<RouteOption["connection"]> }) {
+  return (
+    <li className="border-l-2 border-dashed border-amber-500 pl-4">
+      <p className="font-semibold">⏱ {formatDuration(c.bufferMins)} at {c.airport}</p>
+      <p className="text-sm text-slate-600 dark:text-slate-400">
+        Needs at least {formatDuration(c.minRequiredMins)}
+        {c.terminalChange && ` including a terminal change (${c.terminalChange.from} → ${c.terminalChange.to})`}
+        {c.overnight && (c.hotelGbp ? ` · overnight, hotel about ${gbp(c.hotelGbp)}` : " · overnight wait")}
+      </p>
+    </li>
+  );
+}
+
+const legsOf = (o: RouteOption) => (o.back ? [...o.legs, ...o.back.legs] : o.legs);
+
 const modeLabel = (m: string) => (m === "train" ? "Train" : m === "cab" ? "Cab" : m);
 
 function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz: Tz; req: SearchRequest; highlight?: string; groundAlts: GroundChoice[] }) {
@@ -123,12 +138,19 @@ function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz:
         {highlight && <p className="mb-1 text-xs font-bold uppercase tracking-wide text-sky-700 dark:text-sky-400">{highlight}</p>}
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-2xl font-bold">{gbp(o.costs.total)}{o.costs.bagsUnknown && "+"}</span>
-          <span className="text-right text-base font-medium">{formatDuration(o.totalMins)} door to door</span>
+          <span className="text-right text-base font-medium">
+            {o.back ? `${formatDuration(o.outMins)} out · ${formatDuration(o.back.totalMins)} back` : `${formatDuration(o.totalMins)} door to door`}
+          </span>
         </div>
-        <p className="mt-1 text-base">{routeLabel(o)}</p>
+        <p className="mt-1 text-base">{routeLabel(o)}{o.back && " · return"}</p>
         <p className="text-sm text-slate-600 dark:text-slate-400">
-          Leave home {when(o.leaveHomeUtc, UK_TZ)} · arrive {when(o.arriveUtc, destTz)}
+          {o.back && "Out: "}Leave home {when(o.leaveHomeUtc, UK_TZ)} · arrive {when(o.arriveUtc, destTz)}
         </p>
+        {o.back && (
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Back: leave {o.dest} {when(o.back.leaveDestUtc, destTz)} · home {when(o.back.arriveHomeUtc, UK_TZ)}
+          </p>
+        )}
         {o.badges.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {o.badges.map((b) => <span key={b} className={`rounded-full px-2 py-0.5 text-xs font-medium ${BADGE_STYLE[b]}`}>{b}</span>)}
@@ -141,7 +163,7 @@ function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz:
         <div className="mt-3 space-y-4 border-t border-slate-200 pt-3 dark:border-slate-700">
           {o.kind === "split" && (
             <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-900/30 dark:text-amber-100">
-              <strong>Separate tickets:</strong> if your first flight is late and you miss the second, the second airline doesn&apos;t have to help — you may need to buy a new ticket. You&apos;ll also collect your bags and check in again at {o.hub}
+              <strong>Separate tickets:</strong> if your first flight is late and you miss the second, the second airline doesn&apos;t have to help — you may need to buy a new ticket. You&apos;ll also collect your bags and check in again at {o.hub}{o.back && " (both ways)"}
               {o.legs[1]?.bundled && airlineChanges(o.legs[0]).length > 0 && `, and probably at ${airlineChanges(o.legs[0]).join(", ")} where the airline changes`}.
             </p>
           )}
@@ -161,28 +183,48 @@ function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz:
               )}
             </li>
             <LegBlock leg={o.legs[0]} tz={tz} req={req} />
-            {c && (
-              <li className="border-l-2 border-dashed border-amber-500 pl-4">
-                <p className="font-semibold">⏱ {formatDuration(c.bufferMins)} at {c.airport}</p>
-                <p className="text-sm text-slate-600 dark:text-slate-400">
-                  Needs at least {formatDuration(c.minRequiredMins)}
-                  {c.terminalChange && ` including a terminal change (${c.terminalChange.from} → ${c.terminalChange.to})`}
-                  {c.overnight && (c.hotelGbp ? ` · overnight, hotel about ${gbp(c.hotelGbp)}` : " · overnight wait")}
-                </p>
-              </li>
-            )}
+            {c && <ConnectionStep c={c} />}
             {o.legs.slice(1).map((l, i) => <LegBlock key={`${l.itinerary.providerRef}-${i}`} leg={l} tz={tz} req={req} />)}
             <li className="border-l-2 border-emerald-600 pl-4">
               <p className="font-semibold">📍 Arrive {o.dest} {when(o.arriveUtc, destTz)}</p>
             </li>
           </ol>
 
+          {o.back && (
+            <>
+              <h3 className="font-semibold">Coming back</h3>
+              <ol className="space-y-3">
+                <LegBlock leg={o.back.legs[0]} tz={tz} req={req} />
+                {o.back.connection && <ConnectionStep c={o.back.connection} />}
+                {o.back.legs.slice(1).map((l, i) => <LegBlock key={`back-${l.itinerary.providerRef}-${i}`} leg={l} tz={tz} req={req} />)}
+                <li className="border-l-2 border-slate-400 pl-4">
+                  <p className="font-semibold">🏠 Home {when(o.back.arriveHomeUtc, UK_TZ)}</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    {o.ground.mode === "not set"
+                      ? `About 1h to get through ${o.back.legs[o.back.legs.length - 1].itinerary.dest} airport; travel home not entered yet.`
+                      : `About 1h to get through the airport, then ${modeLabel(o.ground.mode).toLowerCase()} home, about ${formatDuration(o.ground.duration_mins)}`}
+                  </p>
+                </li>
+              </ol>
+            </>
+          )}
+
           <table className="w-full text-sm">
             <tbody>
-              <tr><td>{o.ground.mode === "not set" ? `Getting to ${o.ukAirport} (not entered)` : `${modeLabel(o.ground.mode)} to ${o.ukAirport}`}</td><td className="text-right">{gbp(o.costs.ground)}</td></tr>
-              {o.costs.fares.map((f, i) => (
-                <tr key={i}><td>Flight {o.legs[i].itinerary.origin} → {o.legs[i].itinerary.dest}</td><td className="text-right">{o.legs[i].bundled ? "included" : gbp(f)}</td></tr>
-              ))}
+              <tr>
+                <td>{o.ground.mode === "not set" ? `Getting to ${o.ukAirport} (not entered)` : `${modeLabel(o.ground.mode)} to ${o.ukAirport}`}{o.back && " and back"}</td>
+                <td className="text-right">{gbp(o.costs.ground)}</td>
+              </tr>
+              {o.costs.fares.map((f, i) => {
+                const l = legsOf(o)[i];
+                const returnFare = o.back && i === 0 && o.back.legs.some((b) => b.itinerary.providerRef === l.itinerary.providerRef);
+                return (
+                  <tr key={i}>
+                    <td>Flight {l.itinerary.origin} → {l.itinerary.dest}{returnFare && " (return fare)"}</td>
+                    <td className="text-right">{l.bundled ? "included" : gbp(f)}</td>
+                  </tr>
+                );
+              })}
               <tr><td>Checked bags</td><td className="text-right">{o.costs.bagsUnknown ? "unknown" : gbp(o.costs.bags)}</td></tr>
               {o.costs.excessBaggage > 0 && <tr><td>Likely excess baggage (estimate)</td><td className="text-right">{gbp(o.costs.excessBaggage)}</td></tr>}
               {o.costs.hotel > 0 && <tr><td>Hotel (estimate)</td><td className="text-right">{gbp(o.costs.hotel)}</td></tr>}
@@ -248,9 +290,9 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
     () =>
       data.options.map((o) => {
         const choice = pickGround(toInput(drafts[o.ukAirport] ?? EMPTY_DRAFT), pax);
-        return choice ? applyGround(o, choice, settings.uk_airport_arrival_mins) : o;
+        return choice ? applyGround(o, choice, settings.uk_airport_arrival_mins, settings.uk_arrival_exit_mins ?? 60) : o;
       }),
-    [data.options, drafts, pax, settings.uk_airport_arrival_mins],
+    [data.options, drafts, pax, settings.uk_airport_arrival_mins, settings.uk_arrival_exit_mins],
   );
   const ranked = useMemo(() => rankOptions(options, priceWeight, settings), [options, priceWeight, settings]);
   const tz = data.airportTz;
@@ -283,7 +325,7 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
 
       {data.options.length > 0 && (
         <>
-          <GroundPanel originArea={req.originArea} airports={airports} drafts={drafts} pax={pax} onChange={updateDraft} />
+          <GroundPanel originArea={req.originArea} airports={airports} drafts={drafts} pax={pax} onChange={updateDraft} returnTrip={!!req.returnDate} />
 
           <div className="grid gap-3">
             {ranked.cheapest && <OptionCard o={ranked.cheapest} tz={tz} req={req} highlight="Cheapest" groundAlts={alts[ranked.cheapest.ukAirport] ?? []} />}

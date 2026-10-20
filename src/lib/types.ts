@@ -67,6 +67,7 @@ export interface Settings {
   min_buffer_mins: number;
   max_buffer_mins: number;
   overnight_max_buffer_mins: number;
+  uk_arrival_exit_mins: number; // landing in the UK → leaving the airport (immigration, bags)
   terminal_change_default_mins: number;
   hotel_gbp_default: number;
   hotel_gbp_by_hub: Record<string, number>;
@@ -139,6 +140,12 @@ export interface NormalisedItinerary {
   fromCache: boolean;
 }
 
+/** A return fare: `out` carries the whole price, `back` has price 0 (included). Same providerRef. */
+export interface NormalisedRoundTrip {
+  out: NormalisedItinerary;
+  back: NormalisedItinerary;
+}
+
 export interface BookingLink {
   providerName: string;
   providerType: string | null;
@@ -154,6 +161,7 @@ export interface SearchRequest {
   originArea: string;
   dest: string;
   date: string; // YYYY-MM-DD, UK local departure date
+  returnDate?: string | null; // YYYY-MM-DD, date leaving the destination; empty = one-way
   flexDays: 0 | 1;
   adults: number;
   children: number; // 2–11
@@ -203,6 +211,15 @@ export type Badge =
   | "Excess baggage risk"
   | "Price not confirmed";
 
+export interface ReturnJourney {
+  legs: FlightLeg[];
+  connection: Connection | null;
+  leaveDestUtc: string;
+  arriveUkUtc: string;
+  arriveHomeUtc: string;
+  totalMins: number; // leave destination → arrive home
+}
+
 export interface CostBreakdown {
   ground: number;
   fares: number[];
@@ -225,7 +242,10 @@ export interface RouteOption {
   costs: CostBreakdown;
   leaveHomeUtc: string;
   arriveUtc: string;
-  totalMins: number;
+  outMins: number; // leave home → arrive at destination
+  /** Return journey (destination → UK → home), or null for one-way. */
+  back: ReturnJourney | null;
+  totalMins: number; // outMins + back.totalMins
   badges: Badge[];
   priceAsOf: string; // earliest observed/fetched time across legs
 }

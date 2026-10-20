@@ -95,6 +95,7 @@ export const DEFAULT_SETTINGS: Settings = {
   max_intl_per_group: 12,
   max_domestic_per_intl: 3,
   uk_airport_arrival_mins: 180,
+  uk_arrival_exit_mins: 60,
   cache_ttl_mins: 120,
   market: "GB",
   fx_to_gbp: { GBP: 1, USD: 0.75, EUR: 0.85, INR: 0.0089 },

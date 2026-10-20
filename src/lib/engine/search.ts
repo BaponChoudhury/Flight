@@ -16,7 +16,7 @@ import type {
 } from "@/lib/types";
 import { countPaid, createCallContext } from "./calls";
 import { domesticDatesNeeded, hubsToSearch, pruneInternational } from "./prune";
-import { aggregateCosts, assessBags, checkConnection, groundCost } from "./rules";
+import { aggregateCosts, assessBags, checkConnection, groundCost, type ConnectionCheck } from "./rules";
 import { addDays, addMinutes, localDate, localHour, minutesBetween } from "./time";
 import { knownTz } from "@/lib/config/places";
 
@@ -55,20 +55,37 @@ export function validateRequest(r: SearchRequest): string | null {
   if (r.minBufferMins != null && !(r.minBufferMins >= 60 && r.minBufferMins <= 720))
     return "Time to change flights must be between 1 and 12 hours.";
   if (r.flexDays !== 0 && r.flexDays !== 1) return "Flexibility must be 0 or ±1 day.";
+  if (r.returnDate) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.returnDate)) return "Pick a return date.";
+    if (r.returnDate <= addDays(r.date, r.flexDays)) return "The return date must be after the departure date.";
+    if (r.returnDate > addDays(r.date, 330)) return "The return date must be within 330 days of departure.";
+  }
   return null;
 }
 
-function routeBadges(option: Pick<RouteOption, "kind" | "legs" | "connection" | "costs">, bagsNeeded: boolean): Badge[] {
+/** Every flight leg of an option, outbound then return. */
+export function allLegs(o: Pick<RouteOption, "legs" | "back">): FlightLeg[] {
+  return o.back ? [...o.legs, ...o.back.legs] : o.legs;
+}
+
+function routeBadges(option: Pick<RouteOption, "kind" | "legs" | "connection" | "costs" | "back">, bagsNeeded: boolean): Badge[] {
   const b: Badge[] = [];
+  const legs = allLegs(option);
+  const connections = [option.connection, option.back?.connection ?? null];
   if (option.kind === "split") b.push("Separate tickets");
-  if (bagsNeeded && option.legs.every((l) => l.bag.status === "included" || l.bag.status === "estimated"))
-    b.push("Bags included");
+  if (bagsNeeded && legs.every((l) => l.bag.status === "included" || l.bag.status === "estimated")) b.push("Bags included");
   if (option.costs.bagsUnknown) b.push("Bag price unknown");
-  if (option.connection?.terminalChange) b.push("Terminal change");
-  if (option.connection?.overnight) b.push("Overnight");
-  if (option.legs.some((l) => l.bag.excessRisk)) b.push("Excess baggage risk");
-  if (option.legs.some((l) => !l.itinerary.price.verified)) b.push("Price not confirmed");
+  if (connections.some((c) => c?.terminalChange)) b.push("Terminal change");
+  if (connections.some((c) => c?.overnight)) b.push("Overnight");
+  if (legs.some((l) => l.bag.excessRisk)) b.push("Excess baggage risk");
+  if (legs.some((l) => !l.itinerary.price.verified)) b.push("Price not confirmed");
   return b;
+}
+
+export interface ReturnPart {
+  legs: FlightLeg[];
+  connection: RouteOption["connection"];
+  ukExitMins: number;
 }
 
 export function buildOption(
@@ -78,16 +95,26 @@ export function buildOption(
   req: SearchRequest,
   ukArrivalMins: number,
   connection: RouteOption["connection"] = null,
+  ret: ReturnPart | null = null,
 ): RouteOption {
   const pax = req.adults + req.children;
   const first = legs[0].itinerary;
   const last = legs[legs.length - 1].itinerary;
   const leaveHomeUtc = addMinutes(first.departUtc, -(ukArrivalMins + ground.duration_mins));
-  const costs = aggregateCosts(groundCost(ground, pax), legs, connection?.hotelGbp ?? 0);
-  const partial = { kind, legs, connection, costs };
-  const asOf = legs.map((l) => l.itinerary.observedAt ?? l.itinerary.fetchedAt).sort()[0];
+  const outMins = minutesBetween(leaveHomeUtc, last.arriveUtc);
+  let back: RouteOption["back"] = null;
+  if (ret) {
+    const leaveDestUtc = ret.legs[0].itinerary.departUtc;
+    const arriveUkUtc = ret.legs[ret.legs.length - 1].itinerary.arriveUtc;
+    const arriveHomeUtc = addMinutes(arriveUkUtc, ret.ukExitMins + ground.duration_mins);
+    back = { legs: ret.legs, connection: ret.connection, leaveDestUtc, arriveUkUtc, arriveHomeUtc, totalMins: minutesBetween(leaveDestUtc, arriveHomeUtc) };
+  }
+  const flights = back ? [...legs, ...back.legs] : legs;
+  const hotel = (connection?.hotelGbp ?? 0) + (back?.connection?.hotelGbp ?? 0);
+  const costs = aggregateCosts(groundCost(ground, pax) * (back ? 2 : 1), flights, hotel);
+  const asOf = flights.map((l) => l.itinerary.observedAt ?? l.itinerary.fetchedAt).sort()[0];
   return {
-    id: createHash("sha1").update(legs.map((l) => l.itinerary.providerRef).join("+")).digest("hex").slice(0, 16),
+    id: createHash("sha1").update(flights.map((l) => `${l.itinerary.providerRef}@${l.itinerary.departUtc}`).join("+")).digest("hex").slice(0, 16),
     kind,
     ukAirport: first.origin,
     hub: kind === "split" ? first.dest : null,
@@ -98,15 +125,17 @@ export function buildOption(
     costs,
     leaveHomeUtc,
     arriveUtc: last.arriveUtc,
-    totalMins: minutesBetween(leaveHomeUtc, last.arriveUtc),
-    badges: routeBadges(partial, req.bags > 0),
+    outMins,
+    back,
+    totalMins: outMins + (back?.totalMins ?? 0),
+    badges: routeBadges({ kind, legs, connection, costs, back }, req.bags > 0),
     priceAsOf: asOf,
   };
 }
 
 const INDIA_TZ = "Asia/Kolkata";
 
-function sliceItinerary(it: NormalisedItinerary, from: number, to: number, priced: boolean): NormalisedItinerary {
+function sliceItinerary(it: NormalisedItinerary, from: number, to: number, priced: boolean, keepBags = priced): NormalisedItinerary {
   const segments = it.segments.slice(from, to);
   const first = segments[0];
   const last = segments[segments.length - 1];
@@ -121,8 +150,8 @@ function sliceItinerary(it: NormalisedItinerary, from: number, to: number, price
     carrierName: first.carrierName,
     segments,
     price: priced ? it.price : { ...it.price, amount: 0, totalGbp: 0 },
-    // Ignav's bag count describes the ticket as sold; for the domestic part we fall back to defaults.
-    baggage: priced ? it.baggage : { checkedPieces: null, carryOnPieces: null },
+    // Ignav's bag count describes the international ticket; for the domestic part we fall back to defaults.
+    baggage: keepBags ? it.baggage : { checkedPieces: null, carryOnPieces: null },
   };
 }
 
@@ -158,6 +187,31 @@ export function splitAtIndiaEntry(
   }
   return null;
 }
+
+/**
+ * Mirror of splitAtIndiaEntry for the way home: split where a domestic flight
+ * hands over to one leaving India. Both parts are price-included (the return
+ * fare is on the outbound); the international part keeps Ignav's bag count.
+ */
+export function splitAtIndiaExit(
+  it: NormalisedItinerary,
+  tzOfAirport: (iata: string) => string | null,
+): [NormalisedItinerary, NormalisedItinerary] | null {
+  const tz = (iata: string, segTz: string | null) => segTz ?? tzOfAirport(iata);
+  for (let i = 1; i < it.segments.length; i++) {
+    const prev = it.segments[i - 1];
+    const seg = it.segments[i];
+    const outOfIndia = tz(seg.origin, seg.departTz) === INDIA_TZ && tz(seg.dest, seg.arriveTz) !== INDIA_TZ;
+    const prevDomestic = tz(prev.origin, prev.departTz) === INDIA_TZ;
+    if (outOfIndia && prevDomestic && prev.dest === seg.origin) {
+      return [sliceItinerary(it, 0, i, false), sliceItinerary(it, i, it.segments.length, false, true)];
+    }
+  }
+  return null;
+}
+
+/** An international option: one-way (`back` null) or a return fare. */
+type Candidate = { out: NormalisedItinerary; back: NormalisedItinerary | null };
 
 interface Deps {
   store: Store;
@@ -212,8 +266,10 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
   };
 
   // ----- Stage 1: through tickets + international legs, in parallel -----
-  // Self-transfer itineraries are allowed here: Ignav's own separate-ticket
-  // combinations come back in the same call, so they cost nothing extra.
+  // Self-transfer itineraries are allowed for through tickets: Ignav's own
+  // separate-ticket combinations come back in the same call, so they cost nothing extra.
+  // With a return date, both searches use Ignav's return fares (same number of calls).
+  const returnDate = req.returnDate || null;
   const throughFilters: SearchFilters = {
     ...pax,
     allowSelfTransfer: true,
@@ -224,50 +280,73 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
     allowSelfTransfer: false,
     timeRange: req.earliestDepartHour != null ? { earliestDepartHour: req.earliestDepartHour } : null,
   };
+  const searchIntl = async (o: string, d: string, date: string, f: SearchFilters): Promise<Candidate[] | null> => {
+    if (!returnDate) {
+      const r = await safe(provider.searchOneWay(o, d, date, f, ctx), `${o}→${d} ${date}`);
+      return r && r.map((out) => ({ out, back: null }));
+    }
+    try {
+      return await provider.searchRoundTrip(o, d, date, returnDate, f, ctx);
+    } catch (err) {
+      errors.push(`${o}⇄${d} ${date}/${returnDate}: ${(err as Error).message}`);
+      return null;
+    }
+  };
 
-  const throughJobs = ukAirports.flatMap((o) =>
-    dates.map((d) => safe(provider.searchOneWay(o, req.dest, d, throughFilters, ctx), `${o}→${req.dest} ${d}`)),
-  );
-  const intlJobs = ukAirports.flatMap((o) =>
-    hubs.flatMap((h) => dates.map((d) => safe(provider.searchOneWay(o, h, d, intlFilters, ctx), `${o}→${h} ${d}`))),
-  );
+  const throughJobs = ukAirports.flatMap((o) => dates.map((d) => searchIntl(o, req.dest, d, throughFilters)));
+  const intlJobs = ukAirports.flatMap((o) => hubs.flatMap((h) => dates.map((d) => searchIntl(o, h, d, intlFilters))));
   const [throughRes, intlRes] = await Promise.all([Promise.all(throughJobs), Promise.all(intlJobs)]);
 
-  const through = throughRes.flat().filter((i): i is NormalisedItinerary => !!i);
-  const intl = intlRes.flat().filter((i): i is NormalisedItinerary => !!i && !i.selfTransfer && hubs.includes(i.dest));
+  const through = throughRes.flat().filter((c): c is Candidate => !!c);
+  const intl = intlRes.flat().filter((c): c is Candidate => !!c && !c.out.selfTransfer && !c.back?.selfTransfer && hubs.includes(c.out.dest));
+  const bagLeg = (it: NormalisedItinerary, routeType: FlightLeg["routeType"], bundled = false): FlightLeg => ({
+    routeType,
+    itinerary: it,
+    bag: assessBags(it, routeType, req, config),
+    ...(bundled ? { bundled } : {}),
+  });
+  const tzLookup = (iata: string) => config.airports.find((a) => a.iata === iata)?.tz ?? knownTz(iata);
+  const connOpts = { minBufferMins: minBuffer, allowOvernight };
 
   const options: RouteOption[] = [];
   let selfTransferRejected = 0;
-  for (const it of through) {
-    const ground = groundFor.get(it.origin);
-    if (!it.selfTransfer) {
-      const leg: FlightLeg = { routeType: "international", itinerary: it, bag: assessBags(it, "international", req, config) };
-      options.push(buildOption("through", [leg], ground, req, s.uk_airport_arrival_mins));
+  for (const c of through) {
+    const ground = groundFor.get(c.out.origin);
+    const selfTransfer = c.out.selfTransfer || !!c.back?.selfTransfer;
+    if (!selfTransfer) {
+      const ret = c.back ? { legs: [bagLeg(c.back, "international", true)], connection: null, ukExitMins: s.uk_arrival_exit_mins } : null;
+      options.push(buildOption("through", [bagLeg(c.out, "international")], ground, req, s.uk_airport_arrival_mins, null, ret));
       continue;
     }
     // Ignav's own separate-ticket combination: apply the same connection rules as ours.
-    const parts = splitAtIndiaEntry(it, (iata) => config.airports.find((a) => a.iata === iata)?.tz ?? null);
-    if (!parts || !airlineChangesHaveBuffer(it, minBuffer)) {
+    const parts = splitAtIndiaEntry(c.out, tzLookup);
+    const check = parts && airlineChangesHaveBuffer(c.out, minBuffer) ? checkConnection(parts[0], parts[1], parts[0].dest, tzOf(parts[0].dest), config, connOpts) : null;
+    if (!parts || !check?.ok) {
       selfTransferRejected++;
       continue;
     }
-    const check = checkConnection(parts[0], parts[1], parts[0].dest, tzOf(parts[0].dest), config, { minBufferMins: minBuffer, allowOvernight });
-    if (!check.ok) {
-      selfTransferRejected++;
-      continue;
+    let ret: ReturnPart | null = null;
+    if (c.back) {
+      const backParts = splitAtIndiaExit(c.back, tzLookup);
+      const hub = backParts?.[0].dest;
+      const backCheck = backParts && hub && airlineChangesHaveBuffer(c.back, minBuffer)
+        ? checkConnection(backParts[0], backParts[1], hub, tzOf(hub), config, connOpts, "back")
+        : null;
+      if (!backParts || !backCheck?.ok) {
+        selfTransferRejected++;
+        continue;
+      }
+      ret = { legs: [bagLeg(backParts[0], "domestic", true), bagLeg(backParts[1], "international", true)], connection: backCheck.connection, ukExitMins: s.uk_arrival_exit_mins };
     }
-    const legs: FlightLeg[] = [
-      { routeType: "international", itinerary: parts[0], bag: assessBags(parts[0], "international", req, config) },
-      { routeType: "domestic", itinerary: parts[1], bag: assessBags(parts[1], "domestic", req, config), bundled: true },
-    ];
-    options.push(buildOption("split", legs, ground, req, s.uk_airport_arrival_mins, check.connection));
+    options.push(buildOption("split", [bagLeg(parts[0], "international"), bagLeg(parts[1], "domestic", true)], ground, req, s.uk_airport_arrival_mins, check.connection, ret));
   }
   if (selfTransferRejected)
     notes.push(`${selfTransferRejected} ready-made separate-ticket combinations dropped: connection too short or too long for your settings.`);
 
-  // ----- Prune -----
-  const cheapestThrough = through.length ? Math.min(...through.map((t) => t.price.totalGbp)) : null;
-  const pruned = pruneInternational(intl, {
+  // ----- Prune (on the outbound flight; a return fare's price sits on it) -----
+  const cheapestThrough = through.length ? Math.min(...through.map((t) => t.out.price.totalGbp)) : null;
+  const candidateOf = new Map(intl.map((c) => [c.out, c]));
+  const pruned = pruneInternational(intl.map((c) => c.out), {
     cheapestThroughGbp: cheapestThrough,
     factor: s.prune_factor,
     maxPerGroup: s.max_intl_per_group,
@@ -276,46 +355,54 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
     notes.push(`${pruned.droppedTooExpensive} international flights dropped: over ${s.prune_factor}× the cheapest through ticket.`);
 
   // ----- Stage 2: domestic legs for surviving hubs -----
-  const byHub = new Map<string, NormalisedItinerary[]>();
-  for (const i of pruned.kept) byHub.set(i.dest, [...(byHub.get(i.dest) ?? []), i]);
+  const byHub = new Map<string, Candidate[]>();
+  for (const out of pruned.kept) byHub.set(out.dest, [...(byHub.get(out.dest) ?? []), candidateOf.get(out)!]);
 
   const hubRouteUpdates: HubRoute[] = [];
   const domesticByHub = new Map<string, NormalisedItinerary[]>();
+  const returnDomesticByHub = new Map<string, NormalisedItinerary[]>();
   await Promise.all(
-    [...byHub.entries()].map(async ([hub, arrivals]) => {
+    [...byHub.entries()].map(async ([hub, cands]) => {
       const tz = tzOf(hub);
-      const arrivalTimes = arrivals.map((a) => a.arriveUtc);
+      const arrivalTimes = cands.map((c) => c.out.arriveUtc);
       const needed = domesticDatesNeeded(arrivalTimes, tz, minBuffer, maxBuffer);
       let anyFound = false;
       let allOk = true;
       let unfilteredSearched = false;
       const found: NormalisedItinerary[] = [];
-      await Promise.all(
-        needed.map(async (date) => {
-          // Earliest useful departure hour on this date (saves processing, not calls).
-          const starts = arrivalTimes.map((a) => addMinutes(a, minBuffer));
-          const earliest = starts.some((t) => localDate(t, tz) < date)
-            ? null
-            : Math.min(...starts.filter((t) => localDate(t, tz) === date).map((t) => localHour(t, tz)));
-          const earliestHour = earliest === null || !Number.isFinite(earliest) || earliest === 0 ? null : earliest;
-          const filters: SearchFilters = {
-            ...pax,
-            allowSelfTransfer: false,
-            maxStops: s.domestic_max_stops,
-            timeRange:
-              earliestHour != null || req.latestArriveHour != null
-                ? { earliestDepartHour: earliestHour, latestArriveHour: req.latestArriveHour ?? null }
-                : null,
-          };
-          if (!filters.timeRange) unfilteredSearched = true;
-          const res = await safe(provider.searchOneWay(hub, req.dest, date, filters, ctx), `${hub}→${req.dest} ${date}`);
-          if (res === null) allOk = false;
-          else {
-            if (res.length) anyFound = true;
-            found.push(...res.filter((r) => !r.selfTransfer));
-          }
-        }),
-      );
+      const outbound = needed.map(async (date) => {
+        // Earliest useful departure hour on this date (saves processing, not calls).
+        const starts = arrivalTimes.map((a) => addMinutes(a, minBuffer));
+        const earliest = starts.some((t) => localDate(t, tz) < date)
+          ? null
+          : Math.min(...starts.filter((t) => localDate(t, tz) === date).map((t) => localHour(t, tz)));
+        const earliestHour = earliest === null || !Number.isFinite(earliest) || earliest === 0 ? null : earliest;
+        const filters: SearchFilters = {
+          ...pax,
+          allowSelfTransfer: false,
+          maxStops: s.domestic_max_stops,
+          timeRange:
+            earliestHour != null || req.latestArriveHour != null
+              ? { earliestDepartHour: earliestHour, latestArriveHour: req.latestArriveHour ?? null }
+              : null,
+        };
+        if (!filters.timeRange) unfilteredSearched = true;
+        const res = await safe(provider.searchOneWay(hub, req.dest, date, filters, ctx), `${hub}→${req.dest} ${date}`);
+        if (res === null) allOk = false;
+        else {
+          if (res.length) anyFound = true;
+          found.push(...res.filter((r) => !r.selfTransfer));
+        }
+      });
+      // Way home: destination → hub on the return date (one call per hub).
+      const homeward = returnDate
+        ? (async () => {
+            const filters: SearchFilters = { ...pax, allowSelfTransfer: false, maxStops: s.domestic_max_stops };
+            const res = await safe(provider.searchOneWay(req.dest, hub, returnDate, filters, ctx), `${req.dest}→${hub} ${returnDate}`);
+            returnDomesticByHub.set(hub, (res ?? []).filter((r) => !r.selfTransfer));
+          })()
+        : Promise.resolve();
+      await Promise.all([...outbound, homeward]);
       domesticByHub.set(hub, found);
       if (anyFound || (allOk && unfilteredSearched)) {
         hubRouteUpdates.push({ hub, dest: req.dest, has_service: anyFound, last_checked_at: new Date().toISOString() });
@@ -325,26 +412,52 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
   await store.upsertHubRoutes(hubRouteUpdates);
 
   // ----- Combine split tickets -----
-  for (const [hub, arrivals] of byHub) {
+  const pick = <T>(list: T[], cheapest: number, alsoBest: ((a: T, b: T) => number) | null, cost: (t: T) => number): T[] => {
+    const byCost = [...list].sort((a, b) => cost(a) - cost(b));
+    const chosen = new Set(byCost.slice(0, cheapest));
+    if (alsoBest && list.length) chosen.add([...list].sort(alsoBest)[0]);
+    return [...chosen];
+  };
+  let noWayHome = 0;
+  for (const [hub, cands] of byHub) {
     const doms = domesticByHub.get(hub) ?? [];
+    const homeDoms = returnDomesticByHub.get(hub) ?? [];
     const tz = tzOf(hub);
-    for (const i of arrivals) {
-      const ground = groundFor.get(i.origin);
-      const intlLeg: FlightLeg = { routeType: "international", itinerary: i, bag: assessBags(i, "international", req, config) };
-      const combos: RouteOption[] = [];
-      for (const d of doms) {
-        const check = checkConnection(i, d, hub, tz, config, { minBufferMins: minBuffer, allowOvernight });
-        if (!check.ok) continue;
-        const domLeg: FlightLeg = { routeType: "domestic", itinerary: d, bag: assessBags(d, "domestic", req, config) };
-        combos.push(buildOption("split", [intlLeg, domLeg], ground, req, s.uk_airport_arrival_mins, check.connection));
+    for (const c of cands) {
+      const ground = groundFor.get(c.out.origin);
+      // Outbound: international → domestic.
+      const outs = doms
+        .map((d) => ({ d, check: checkConnection(c.out, d, hub, tz, config, connOpts) }))
+        .filter((x) => x.check.ok);
+      const outPicks = pick(outs, c.back ? 2 : s.max_domestic_per_intl, (a, b) => Date.parse(a.d.arriveUtc) - Date.parse(b.d.arriveUtc), (x) => x.d.price.totalGbp);
+      // Return: domestic → international.
+      let backPicks: { d: NormalisedItinerary; check: ConnectionCheck }[] | null = null;
+      if (c.back) {
+        const backs = homeDoms
+          .map((d) => ({ d, check: checkConnection(d, c.back!, hub, tz, config, connOpts, "back") }))
+          .filter((x) => x.check.ok);
+        backPicks = pick(backs, 2, (a, b) => Date.parse(b.d.departUtc) - Date.parse(a.d.departUtc), (x) => x.d.price.totalGbp);
+        if (!backPicks.length) {
+          if (outPicks.length) noWayHome++;
+          continue;
+        }
       }
-      combos.sort((a, b) => a.costs.total - b.costs.total || a.totalMins - b.totalMins);
-      const fastest = [...combos].sort((a, b) => a.totalMins - b.totalMins)[0];
-      const chosen = new Set(combos.slice(0, s.max_domestic_per_intl));
-      if (fastest) chosen.add(fastest);
-      options.push(...chosen);
+      const combos: RouteOption[] = [];
+      for (const o of outPicks) {
+        const outLegs = [bagLeg(c.out, "international"), bagLeg(o.d, "domestic")];
+        if (!backPicks) {
+          combos.push(buildOption("split", outLegs, ground, req, s.uk_airport_arrival_mins, o.check.connection));
+          continue;
+        }
+        for (const bk of backPicks) {
+          const ret = { legs: [bagLeg(bk.d, "domestic"), bagLeg(c.back!, "international", true)], connection: bk.check.connection, ukExitMins: s.uk_arrival_exit_mins };
+          combos.push(buildOption("split", outLegs, ground, req, s.uk_airport_arrival_mins, o.check.connection, ret));
+        }
+      }
+      options.push(...pick(combos, s.max_domestic_per_intl, (a, b) => a.totalMins - b.totalMins, (o) => o.costs.total));
     }
   }
+  if (noWayHome) notes.push(`${noWayHome} return fares dropped: no domestic flight home on ${returnDate} connects in time.`);
 
   // De-duplicate (identical itineraries can come back for neighbouring dates).
   const unique = [...new Map(options.map((o) => [o.id, o])).values()].sort(
@@ -364,7 +477,7 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
 
   const airportTz: Record<string, string> = {};
   for (const a of config.airports) airportTz[a.iata] = a.tz;
-  for (const o of unique) for (const l of o.legs) for (const seg of l.itinerary.segments) {
+  for (const o of unique) for (const l of allLegs(o)) for (const seg of l.itinerary.segments) {
     if (seg.departTz && !airportTz[seg.origin]) airportTz[seg.origin] = seg.departTz;
     if (seg.arriveTz && !airportTz[seg.dest]) airportTz[seg.dest] = seg.arriveTz;
   }

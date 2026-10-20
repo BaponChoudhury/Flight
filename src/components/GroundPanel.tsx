@@ -39,19 +39,21 @@ export function GroundPanel({
   drafts,
   pax,
   onChange,
+  returnTrip = false,
 }: {
   originArea: string;
   airports: string[];
   drafts: Record<string, GroundDraft>;
   pax: number;
   onChange: (airport: string, d: GroundDraft) => void;
+  returnTrip?: boolean;
 }) {
   return (
     <details open className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
       <summary className="cursor-pointer font-semibold">Getting to the airport from {originArea}</summary>
       <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
         Look up your train fare (e.g. on National Rail) and a cab quote, and enter them here. Results update straight away — no new search needed.
-        Times can be minutes (80) or hours (1:20).
+        Times can be minutes (80) or hours (1:20).{returnTrip && " Enter one-way prices — we count them twice for the return."}
       </p>
       <div className="mt-3 space-y-4">
         {airports.map((a) => {

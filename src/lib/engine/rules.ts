@@ -44,20 +44,23 @@ export interface ConnectionCheck {
  * decide whether the layover is overnight.
  */
 export function checkConnection(
-  intl: NormalisedItinerary,
-  dom: NormalisedItinerary,
+  arriving: NormalisedItinerary,
+  departing: NormalisedItinerary,
   hub: string,
   hubTz: string,
   config: Pick<AppConfig, "airlineTerminals" | "terminalRules" | "settings">,
   opts: { minBufferMins: number; allowOvernight: boolean },
+  /** "out": international lands, domestic leaves. "back": domestic lands, international leaves. */
+  direction: "out" | "back" = "out",
 ): ConnectionCheck {
   const s = config.settings;
-  const bufferMins = minutesBetween(intl.arriveUtc, dom.departUtc);
+  const bufferMins = minutesBetween(arriving.arriveUtc, departing.departUtc);
 
-  const lastIntlCarrier = intl.segments[intl.segments.length - 1]?.carrier ?? intl.carrier;
-  const firstDomCarrier = dom.segments[0]?.carrier ?? dom.carrier;
-  const from = terminalFor(config, hub, lastIntlCarrier, "international");
-  const to = terminalFor(config, hub, firstDomCarrier, "domestic");
+  const lastArrivingCarrier = arriving.segments[arriving.segments.length - 1]?.carrier ?? arriving.carrier;
+  const firstDepartingCarrier = departing.segments[0]?.carrier ?? departing.carrier;
+  const [arriveType, departType]: RouteType[] = direction === "out" ? ["international", "domestic"] : ["domestic", "international"];
+  const from = terminalFor(config, hub, lastArrivingCarrier, arriveType);
+  const to = terminalFor(config, hub, firstDepartingCarrier, departType);
   let extra = 0;
   let terminalChange: Connection["terminalChange"] = null;
   if (from && to && from !== to) {
@@ -69,7 +72,7 @@ export function checkConnection(
 
   const minRequiredMins = opts.minBufferMins + extra;
   const maxMins = opts.allowOvernight ? s.overnight_max_buffer_mins : s.max_buffer_mins;
-  const overnight = bufferMins >= 360 && crossesLocalMidnight(intl.arriveUtc, dom.departUtc, hubTz);
+  const overnight = bufferMins >= 360 && crossesLocalMidnight(arriving.arriveUtc, departing.departUtc, hubTz);
   const hotelGbp = overnight && opts.allowOvernight ? (s.hotel_gbp_by_hub[hub] ?? s.hotel_gbp_default) : 0;
 
   const connection: Connection = { airport: hub, bufferMins, minRequiredMins, terminalChange, overnight, hotelGbp };
@@ -255,15 +258,24 @@ export function pickGround(input: GroundInput, pax: number): GroundChoice | null
  * Re-price an option with a different way of getting to the UK airport:
  * replaces the ground cost and moves "leave home" so door-to-door time stays right.
  */
-export function applyGround(o: RouteOption, choice: GroundChoice, ukArrivalMins: number): RouteOption {
+export function applyGround(o: RouteOption, choice: GroundChoice, ukArrivalMins: number, ukExitMins = 60): RouteOption {
   const firstDepart = o.legs[0].itinerary.departUtc;
   const leaveHomeUtc = addMinutes(firstDepart, -(ukArrivalMins + choice.mins));
-  const ground = Math.round(choice.costGbp * 100) / 100;
+  const trips = o.back ? 2 : 1; // home → airport, and airport → home on a return trip
+  const ground = Math.round(choice.costGbp * trips * 100) / 100;
+  const outMins = minutesBetween(leaveHomeUtc, o.arriveUtc);
+  let back = o.back;
+  if (back) {
+    const arriveHomeUtc = addMinutes(back.arriveUkUtc, ukExitMins + choice.mins);
+    back = { ...back, arriveHomeUtc, totalMins: minutesBetween(back.leaveDestUtc, arriveHomeUtc) };
+  }
   return {
     ...o,
-    ground: { ...o.ground, mode: choice.mode, cost_gbp: choice.costGbp, per_person: false, duration_mins: choice.mins, notes: choice.detail },
+    ground: { ...o.ground, mode: choice.mode, cost_gbp: choice.costGbp, per_person: false, duration_mins: choice.mins, notes: choice.detail + (trips === 2 ? ", each way" : "") },
     costs: { ...o.costs, ground, total: Math.round((o.costs.total - o.costs.ground + ground) * 100) / 100 },
     leaveHomeUtc,
-    totalMins: minutesBetween(leaveHomeUtc, o.arriveUtc),
+    outMins,
+    back,
+    totalMins: outMins + (back?.totalMins ?? 0),
   };
 }

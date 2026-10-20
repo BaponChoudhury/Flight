@@ -33,6 +33,8 @@ export function SearchForm({
   const [airports, setAirports] = useState<string[]>([]);
   const [formError, setFormError] = useState("");
   const [more, setMore] = useState(false);
+  const [tripType, setTripType] = useState<"oneway" | "return">("oneway");
+  const [returnDate, setReturnDate] = useState("");
   const [bufferHours, setBufferHours] = useState(String(config.settings.min_buffer_mins / 60));
   const [req, setReq] = useState<Omit<SearchRequest, "originArea" | "dest" | "ukAirports">>({
     date: defaultDate(),
@@ -85,8 +87,10 @@ export function SearchForm({
     if (!airports.length) return setFormError("Pick at least one UK airport.");
     if (airports.length > 5) return setFormError("Pick at most 5 UK airports (each one adds searches).");
     if ((req.infants ?? 0) > req.adults) return setFormError("Each infant needs an adult (one infant per adult).");
+    if (tripType === "return" && !returnDate) return setFormError("Pick the date you're coming back.");
+    if (tripType === "return" && returnDate <= req.date) return setFormError("The return date must be after the departure date.");
     setFormError("");
-    onSearch({ ...req, originArea: located?.name ?? from.trim(), dest, ukAirports: airports });
+    onSearch({ ...req, originArea: located?.name ?? from.trim(), dest, ukAirports: airports, returnDate: tripType === "return" ? returnDate : null });
   }
 
   return (
@@ -159,13 +163,34 @@ export function SearchForm({
         />
       </div>
 
+      <div role="radiogroup" aria-label="Trip type" className="grid grid-cols-2 gap-1 rounded-lg bg-slate-200 p-1 dark:bg-slate-800">
+        {(["oneway", "return"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            role="radio"
+            aria-checked={tripType === t}
+            onClick={() => setTripType(t)}
+            className={`rounded-md py-2 text-base font-medium ${tripType === t ? "bg-white shadow dark:bg-slate-600" : "text-slate-600 dark:text-slate-300"}`}
+          >
+            {t === "oneway" ? "One-way" : "Return"}
+          </button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className={label} htmlFor="date">Leaving on</label>
           <input id="date" type="date" className={field} value={req.date} onChange={(e) => set("date", e.target.value)} required />
         </div>
+        {tripType === "return" && (
+          <div>
+            <label className={label} htmlFor="ret">Coming back on</label>
+            <input id="ret" type="date" className={field} min={req.date} value={returnDate} onChange={(e) => setReturnDate(e.target.value)} required />
+          </div>
+        )}
         <div>
-          <label className={label} htmlFor="flex">Flexibility</label>
+          <label className={label} htmlFor="flex">Flexibility (outbound)</label>
           <select id="flex" className={field} value={req.flexDays} onChange={(e) => set("flexDays", Number(e.target.value) as 0 | 1)}>
             <option value={0}>Exact date</option>
             <option value={1}>± 1 day (3× searches)</option>
@@ -214,7 +239,7 @@ export function SearchForm({
         </div>
       </div>
       <p className="-mt-2 text-xs text-slate-500">
-        Change time = time to switch from the international to the domestic flight on separate tickets (immigration, bags, check-in). We add 45 min if you also change terminal.
+        Change time = time to switch between the international and domestic flights on separate tickets (immigration, bags, check-in) — used both ways on a return trip. We add 45 min if you also change terminal.
       </p>
 
       <button type="button" className="text-sm font-medium text-sky-700 underline dark:text-sky-400" onClick={() => setMore((m) => !m)}>

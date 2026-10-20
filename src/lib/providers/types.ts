@@ -1,4 +1,4 @@
-import type { BookingLink, CallLogEntry, NormalisedItinerary, ProviderId, Settings } from "@/lib/types";
+import type { BookingLink, CallLogEntry, NormalisedItinerary, NormalisedRoundTrip, ProviderId, Settings } from "@/lib/types";
 
 export interface SearchFilters {
   adults: number;
@@ -47,6 +47,15 @@ export interface FlightProvider {
     filters: SearchFilters,
     ctx: CallContext,
   ): Promise<NormalisedItinerary[]>;
+  /** Return fares: one price for an outbound + inbound pair. */
+  searchRoundTrip(
+    origin: string,
+    dest: string,
+    date: string,
+    returnDate: string,
+    filters: SearchFilters,
+    ctx: CallContext,
+  ): Promise<NormalisedRoundTrip[]>;
   getBookingLinks(providerRef: string, filters: SearchFilters, ctx: CallContext): Promise<BookingLink[]>;
 }
 

@@ -38,7 +38,8 @@ All tables have row-level security enabled with no policies, so the public anon 
 - **From:** any UK town or postcode. `/api/locate` looks it up with [postcodes.io](https://postcodes.io), which is free and needs no key. It then suggests the 2 nearest regional airports within 250km, plus **London (all airports)**. The list is in `src/lib/config/places.ts`. You can untick airports or add others. If the lookup fails, you pick airports by hand.
   - `LON` is sent to Ignav as one origin and returns flights from LHR, LGW, STN, LTN and so on in a single call.
   - The server needs network access to `api.postcodes.io`.
-- **To:** any Indian airport. Pick from the list (about 70 airports) or type a 3-letter code.
+- **To:** any Indian airport, found as you type through `/api/airports`. It uses the free [OurAirports](https://github.com/davidmegginson/ourairports-data) list: about 4,000 airports with scheduled flights worldwide, 116 of them in India. The server downloads it, keeps a compact copy in Supabase (`kv` table, `0003_kv.sql`) and refreshes it every 30 days. Typing never calls Ignav, so it costs nothing. You can also type a 3-letter code.
+- **Trip:** one-way or return. "Coming back on" is the day you leave the destination.
 - **Passengers:** adults, children (2–11) and infants (under 2, on a lap; at most one per adult). Infants go to Ignav as `infants_on_lap`. They don't count towards train fares or checked bags.
 - **Bags:** checked bags per person. No weight is asked. Domestic allowances below a standard 23kg bag get an "Excess baggage risk" badge, but no cost is added.
 - **Change time:** hours allowed for switching from the international to the domestic flight on separate tickets (default 3).
@@ -86,6 +87,15 @@ The client is generated from `spec/ignav-openapi.json`. To regenerate: `npm run 
 - **Domestic coverage is incomplete:** e.g. Ignav has no direct CCU → GAU flights and few IndiGo flights. That's why domestic searches allow 1 stop by default.
 - **Bag data:** most domestic fares come back with no bag info. These are assumed to include 1 × 15kg bag and labelled "estimated". International fares that list `carry_on` but no `checked` count are treated as having no checked bag. The bag fee comes from `bag_fees`, falling back to the `*` row (placeholder £70 per 23kg bag).
 - **Unconfirmed prices:** a fare with `price.status = "unverified"` gets a "Price not confirmed" badge.
+
+## Return trips
+
+- **International:** Ignav's return fares (`/api/fares/round-trip`) for UK ⇄ hub and UK ⇄ destination, one price for both directions. The return goes back to the same UK airport, or to any London airport when searching `LON`. These calls cost the same as one-way searches.
+- **Domestic:** hub → destination on the way out (as before), and destination → hub on the return date, one extra call per hub.
+- **Connection on the way home:** the domestic flight must land at least the change time (plus any terminal change) before the international flight leaves. It also has to be within the 14h maximum.
+- **Costs:** ground travel counted both ways. The return fare shows on the outbound flight, and the international flight home is "included". Bag fees are charged per direction.
+- **Time:** total = door-to-door out + door-to-door back. The way back adds `uk_arrival_exit_mins` (60) to get through the UK airport.
+- **Typical call count:** 3 UK origins → 3 + 24 + ≤16 + ≤8 ≈ 50 calls. Real test: 49 calls, 270 options.
 
 ## Getting to the airport (train vs cab)
 

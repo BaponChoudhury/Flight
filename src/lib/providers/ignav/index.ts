@@ -4,11 +4,12 @@
 import type { components } from "./schema";
 import type { CallContext, FlightProvider, SearchFilters } from "@/lib/providers/types";
 import { ProviderError } from "@/lib/providers/types";
-import type { BookingLink, NormalisedItinerary, NormalisedSegment, Settings } from "@/lib/types";
+import type { BookingLink, NormalisedItinerary, NormalisedRoundTrip, NormalisedSegment, Settings } from "@/lib/types";
 import { minutesBetween, parseInstant } from "@/lib/engine/time";
 
 type S = components["schemas"];
 export type IgnavOneWayRequest = S["OneWayRequest"];
+export type IgnavRoundTripRequest = S["RoundTripRequest"];
 export type IgnavFareSearchResponse = S["FareSearchResponseModel"];
 export type IgnavBookingLinksRequest = S["BookingLinksRequest"];
 export type IgnavBookingLinksResponse = S["BookingOptionsResponseModel"] | S["SearchBookingOptionsResponseModel"];
@@ -111,56 +112,89 @@ function normaliseSegment(s: S["SegmentModel"]): NormalisedSegment {
   };
 }
 
+type Meta = { fetchedAt: string; fromCache: boolean; passengers: number };
+
+/** One direction of an Ignav itinerary. `priced` = carries the ticket price (inbound of a return fare doesn't). */
+function normaliseLeg(
+  it: S["ItineraryModel"],
+  leg: S["LegModel"],
+  priced: boolean,
+  raw: IgnavFareSearchResponse,
+  meta: Meta,
+  settings: Settings,
+): NormalisedItinerary {
+  const segments = leg.segments.map(normaliseSegment);
+  if (segments.length === 0) throw new Error("no segments");
+  const fx = toGbp(it.price.amount, it.price.currency, settings);
+  if (!fx) throw new Error(`no FX rate for ${it.price.currency}`);
+  const totalGbp = settings.price_is_party_total ? fx.gbp : fx.gbp * meta.passengers;
+  const departUtc = segments[0].departUtc;
+  const arriveUtc = segments[segments.length - 1].arriveUtc;
+  return {
+    provider: "ignav",
+    providerRef: it.ignav_id,
+    origin: segments[0].origin,
+    dest: segments[segments.length - 1].dest,
+    departUtc,
+    arriveUtc,
+    durationMins: leg.duration_minutes ?? minutesBetween(departUtc, arriveUtc),
+    // LegModel.carrier is the airline *name*; rules key on the IATA code.
+    carrier: segments[0].carrier,
+    carrierName: leg.carrier ?? segments[0].carrierName,
+    segments,
+    price: {
+      amount: priced ? it.price.amount : 0,
+      currency: it.price.currency,
+      totalGbp: priced ? Math.round(totalGbp * 100) / 100 : 0,
+      verified: it.price.status === "verified",
+      fxApprox: fx.approx,
+    },
+    baggage: {
+      // A bags object that lists carry-on but no checked count means no checked bag.
+      checkedPieces: it.bags ? (it.bags.checked ?? 0) : null,
+      carryOnPieces: it.bags?.carry_on ?? null,
+    },
+    selfTransfer: it.requires_self_transfer ?? false,
+    observedAt: raw.observed_at ?? null,
+    fetchedAt: meta.fetchedAt,
+    fromCache: meta.fromCache,
+  };
+}
+
 export function normaliseOneWay(
   raw: IgnavFareSearchResponse,
-  meta: { fetchedAt: string; fromCache: boolean; passengers: number },
+  meta: Meta,
   settings: Settings,
 ): { itineraries: NormalisedItinerary[]; skipped: number } {
   const out: NormalisedItinerary[] = [];
   let skipped = 0;
   for (const it of raw.itineraries ?? []) {
     try {
-      const segments = it.outbound.segments.map(normaliseSegment);
-      if (segments.length === 0) throw new Error("no segments");
-      const fx = toGbp(it.price.amount, it.price.currency, settings);
-      if (!fx) throw new Error(`no FX rate for ${it.price.currency}`);
-      const totalGbp = settings.price_is_party_total ? fx.gbp : fx.gbp * meta.passengers;
-      const departUtc = segments[0].departUtc;
-      const arriveUtc = segments[segments.length - 1].arriveUtc;
-      out.push({
-        provider: "ignav",
-        providerRef: it.ignav_id,
-        origin: segments[0].origin,
-        dest: segments[segments.length - 1].dest,
-        departUtc,
-        arriveUtc,
-        durationMins: it.outbound.duration_minutes ?? minutesBetween(departUtc, arriveUtc),
-        // LegModel.carrier is the airline *name*; rules key on the IATA code.
-        carrier: segments[0].carrier,
-        carrierName: it.outbound.carrier ?? segments[0].carrierName,
-        segments,
-        price: {
-          amount: it.price.amount,
-          currency: it.price.currency,
-          totalGbp: Math.round(totalGbp * 100) / 100,
-          verified: it.price.status === "verified",
-          fxApprox: fx.approx,
-        },
-        baggage: {
-          // A bags object that lists carry-on but no checked count means no checked bag.
-          checkedPieces: it.bags ? (it.bags.checked ?? 0) : null,
-          carryOnPieces: it.bags?.carry_on ?? null,
-        },
-        selfTransfer: it.requires_self_transfer ?? false,
-        observedAt: raw.observed_at ?? null,
-        fetchedAt: meta.fetchedAt,
-        fromCache: meta.fromCache,
-      });
+      out.push(normaliseLeg(it, it.outbound, true, raw, meta, settings));
     } catch {
       skipped++;
     }
   }
   return { itineraries: out, skipped };
+}
+
+/** Return fares: the outbound carries the whole price, the inbound is included in it. */
+export function normaliseRoundTrip(
+  raw: IgnavFareSearchResponse,
+  meta: Meta,
+  settings: Settings,
+): { trips: NormalisedRoundTrip[]; skipped: number } {
+  const trips: NormalisedRoundTrip[] = [];
+  let skipped = 0;
+  for (const it of raw.itineraries ?? []) {
+    try {
+      if (!it.inbound) throw new Error("no inbound");
+      trips.push({ out: normaliseLeg(it, it.outbound, true, raw, meta, settings), back: normaliseLeg(it, it.inbound, false, raw, meta, settings) });
+    } catch {
+      skipped++;
+    }
+  }
+  return { trips, skipped };
 }
 
 export function normaliseBookingLinks(raw: IgnavBookingLinksResponse): BookingLink[] {
@@ -197,6 +231,22 @@ export const ignavProvider: FlightProvider = {
       { fetchedAt: res.fetchedAt, fromCache: res.fromCache, passengers: filters.adults + filters.children },
       ctx.settings,
     ).itineraries;
+  },
+
+  async searchRoundTrip(origin, dest, date, returnDate, filters, ctx: CallContext) {
+    const body: IgnavRoundTripRequest = { ...buildOneWayRequest(origin, dest, date, filters, ctx.settings), return_date: returnDate };
+    const res = await ctx.call({
+      provider: "ignav",
+      endpoint: "/api/fares/round-trip",
+      body,
+      label: `${origin}⇄${dest} ${date}/${returnDate}`,
+      fetcher: () => ignavPost<IgnavFareSearchResponse>("/api/fares/round-trip", body),
+    });
+    return normaliseRoundTrip(
+      res.raw as IgnavFareSearchResponse,
+      { fetchedAt: res.fetchedAt, fromCache: res.fromCache, passengers: filters.adults + filters.children },
+      ctx.settings,
+    ).trips;
   },
 
   async getBookingLinks(providerRef, filters, ctx) {
