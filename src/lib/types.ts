@@ -83,6 +83,9 @@ export interface Settings {
   hub_route_recheck_days: number;
   unknown_bag_penalty: number;
   max_parallel_calls: number;
+  fx_margin_pct: number; // taken off the mid-market rate when converting foreign-market prices
+  hidden_market_min_saving_gbp: number; // only offer a foreign-market price that beats the UK by at least this
+  quote_ttl_mins: number;
 }
 
 export interface AppConfig {

@@ -60,6 +60,8 @@ export interface FlightProvider {
   ): Promise<NormalisedRoundTrip[]>;
   /** `key` lets the provider find the itinerary again by its flights if `providerRef` has expired. */
   getBookingLinks(providerRef: string, filters: SearchFilters, ctx: CallContext, key?: BookingKey): Promise<BookingLink[]>;
+  /** Booking links for the same flights as sold in another market (country code), found by flight details. */
+  getMarketBookingLinks(key: BookingKey, filters: SearchFilters, ctx: CallContext, market: string): Promise<BookingLink[]>;
 }
 
 export class ProviderError extends Error {

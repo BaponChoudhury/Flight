@@ -215,7 +215,7 @@ export function normaliseRoundTrip(
   return { trips, skipped };
 }
 
-export function bookingKeyRequest(key: BookingKey, filters: SearchFilters, settings: Settings): IgnavBookingLinksRequest {
+export function bookingKeyRequest(key: BookingKey, filters: SearchFilters, settings: Settings, market = settings.market): IgnavBookingLinksRequest {
   return {
     origin: key.origin,
     destination: key.dest,
@@ -226,7 +226,7 @@ export function bookingKeyRequest(key: BookingKey, filters: SearchFilters, setti
     adults: filters.adults,
     children: filters.children,
     infants_on_lap: filters.infants ?? 0,
-    market: settings.market,
+    market,
   };
 }
 
@@ -280,6 +280,19 @@ export const ignavProvider: FlightProvider = {
       { fetchedAt: res.fetchedAt, fromCache: res.fromCache, passengers: filters.adults + filters.children },
       ctx.settings,
     ).trips;
+  },
+
+  async getMarketBookingLinks(key, filters, ctx, market) {
+    // An ignav_id is tied to the market it was searched in, so other markets are looked up by flight details.
+    const body = bookingKeyRequest(key, filters, ctx.settings, market);
+    const res = await ctx.call({
+      provider: "ignav",
+      endpoint: "/api/fares/booking-links",
+      body,
+      label: `booking links [${market}] ${key.origin}-${key.dest} ${key.carrier}${key.flightNumber}`,
+      fetcher: () => ignavPost<IgnavBookingLinksResponse>("/api/fares/booking-links", body),
+    });
+    return normaliseBookingLinks(res.raw as IgnavBookingLinksResponse);
   },
 
   async getBookingLinks(providerRef, filters, ctx, key) {

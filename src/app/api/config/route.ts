@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin-auth";
 import { CONFIG_TABLES, getStore, type ConfigTable } from "@/lib/store";
 import type { Settings } from "@/lib/types";
 
@@ -12,6 +13,8 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   const body = (await request.json().catch(() => null)) as
     | { table: ConfigTable; rows: Record<string, unknown>[] }
     | { settings: Settings }

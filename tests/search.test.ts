@@ -105,6 +105,9 @@ const fakeIgnav: FlightProvider = {
   async getBookingLinks() {
     return [];
   },
+  async getMarketBookingLinks() {
+    return [];
+  },
 };
 
 const req: SearchRequest = { originArea: "Stafford", dest: "GAU", date: "2026-12-10", flexDays: 0, adults: 2, children: 0, bags: 1, bagKg: 23 };

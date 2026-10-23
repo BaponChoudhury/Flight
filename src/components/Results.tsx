@@ -29,6 +29,7 @@ function routeLabel(o: RouteOption) {
 function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest }) {
   const it = leg.itinerary;
   const [links, setLinks] = useState<BookingLink[] | null>(null);
+  const [lower, setLower] = useState<LowerPriceView | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const [err, setErr] = useState("");
   const via = it.segments.slice(0, -1).map((s) => s.dest);
@@ -40,7 +41,14 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
     const res = await fetch("/api/booking-links", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ providerRef: it.providerRef, bookingKey: it.bookingKey, adults: req.adults, children: req.children, infants: req.infants ?? 0 }),
+      body: JSON.stringify({
+        providerRef: it.providerRef,
+        bookingKey: it.bookingKey,
+        priceGbp: it.price.totalGbp,
+        adults: req.adults,
+        children: req.children,
+        infants: req.infants ?? 0,
+      }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -49,6 +57,7 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
       return;
     }
     setLinks(data.links);
+    setLower(data.lowerPrice ?? null);
     setState("idle");
   }
 
@@ -77,7 +86,7 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
             {state === "loading" ? "Getting booking links…" : "Get booking links"}
           </button>
         ) : links.length === 0 ? (
-          <p className="text-sm">No booking links available for this flight.</p>
+          !lower && <p className="text-sm">No booking links available for this flight.</p>
         ) : (
           <ul className="space-y-1 text-sm">
             {links.slice(0, 5).map((l, i) => (
@@ -92,9 +101,77 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
             ))}
           </ul>
         )}
+        {lower && <LowerPriceOffer offer={lower} req={req} />}
         {state === "error" && <p className="text-sm text-rose-700">{err}</p>}
       </div>
     </li>
+  );
+}
+
+interface LowerPriceView {
+  quoteId: string;
+  priceGbp: number;
+  ukPriceGbp: number | null;
+  savingGbp: number | null;
+  fareName: string | null;
+  expiresAt: string;
+}
+
+const formField = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base dark:border-slate-600 dark:bg-slate-800";
+
+/** A cheaper price our team can book for the customer. Where it comes from is deliberately not shown. */
+function LowerPriceOffer({ offer, req }: { offer: LowerPriceView; req: SearchRequest }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ name: "", email: "", phone: "", notes: "" });
+  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [message, setMessage] = useState("");
+  const until = new Date(offer.expiresAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setStatus("sending");
+    const res = await fetch("/api/fare-requests", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ quoteId: offer.quoteId, contact: { name: form.name, email: form.email, phone: form.phone }, notes: form.notes }),
+    });
+    const d = await res.json();
+    if (!res.ok) {
+      setMessage(d.error ?? "Something went wrong.");
+      setStatus("error");
+      return;
+    }
+    setStatus("sent");
+  }
+
+  return (
+    <div className="mt-2 rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm dark:border-emerald-800 dark:bg-emerald-900/30">
+      <p className="font-semibold text-emerald-900 dark:text-emerald-100">
+        Lower price found: {gbp(offer.priceGbp)} for {travellers(req)}
+        {offer.savingGbp != null && ` — save ${gbp(offer.savingGbp)}`}
+      </p>
+      <p className="text-emerald-900/80 dark:text-emerald-100/80">
+        Same flights{offer.fareName ? ` (${offer.fareName})` : ""}. We book this fare for you. Price held until {until}; we confirm it with you before taking any payment.
+      </p>
+      {status === "sent" ? (
+        <p className="mt-2 font-medium">Thanks — request received. We&apos;ll contact you shortly to confirm the price and your details. Nothing has been charged.</p>
+      ) : !open ? (
+        <button type="button" onClick={() => setOpen(true)} className="mt-2 rounded-lg bg-emerald-700 px-3 py-2 font-semibold text-white">
+          Request this fare
+        </button>
+      ) : (
+        <form onSubmit={submit} className="mt-2 space-y-2">
+          <input required aria-label="Your name" placeholder="Your name" className={formField} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <input required type="email" aria-label="Email" placeholder="Email" className={formField} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          <input required type="tel" aria-label="Phone" placeholder="Phone, e.g. +44 7700 900123" className={formField} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+          <textarea aria-label="Notes" placeholder="Anything we should know? (optional)" className={formField} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+          <button type="submit" disabled={status === "sending"} className="rounded-lg bg-emerald-700 px-3 py-2 font-semibold text-white disabled:opacity-50">
+            {status === "sending" ? "Sending…" : "Send request"}
+          </button>
+          {status === "error" && <p className="text-rose-700">{message}</p>}
+        </form>
+      )}
+    </div>
   );
 }
 

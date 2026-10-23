@@ -22,6 +22,7 @@ npm run dev                  # http://localhost:3000
 | `SUPABASE_URL` | Persistent cache/config | Optional in Phase 1. Without it, an in-memory store is used (cache and admin edits reset on restart). |
 | `SUPABASE_ANON_KEY` | Phase 2 auth | Not used yet. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Persistent cache/config | Server-side only. Never expose to the browser. |
+| `ADMIN_PASSWORD` | Admin | Unlocks hidden-market fare requests and config edits on `/admin`. Admin data stays locked without it. |
 | `APP_PASSWORD` | Optional | Password-protects the whole app (any username). Recommended when deployed, since there are no accounts yet. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Phase 3 | Not used yet. |
 
@@ -112,6 +113,18 @@ There's no free API for live UK train or coach prices, or for taxi quotes (Train
 - **Use** picks the cheapest option for your group, or forces train, coach or cab. For example, choose cab for a very early flight when no trains are running.
 - Totals, door-to-door times and the ranking update straight away, with no new Ignav calls. Each route card shows the alternative and the price difference.
 - Your entries are saved in your browser, per home area. The first time, they're filled in from the `ground_access` defaults in Admin.
+
+## Lower prices from other markets (hidden from users)
+
+Ignav's `market` setting changes which sellers appear for the same flights, and sometimes their prices. For example, London → Delhi on EgyptAir was £723 from the only UK seller, and ≈ £612 from India-market sellers on the same day.
+
+- **When it runs:** when someone taps **Get booking links**, the server fetches the UK links as usual. In parallel (+1 Ignav call) it looks up the same flights in the **destination country's market** (the origin's on the way home).
+- **Conversion:** foreign prices are converted at the **mid-market rate minus `fx_margin_pct` (0.4%)**, rounded up to the penny. Rates come from open.er-api.com (free, mid-market, daily) and are cached for 6 hours. **If live rates can't be fetched, no foreign price is offered.**
+- **When a price is offered:** only if it beats the cheapest UK price by at least `hidden_market_min_saving_gbp` (£5). The UK search price is used when UK links carry no price.
+- **What the customer sees:** only "Lower price found: £X" and a **Request this fare** form (name, email, phone). The seller, market, local price and link are stored server-side in `fare_quotes` (valid for `quote_ttl_mins`, 30 min) and are never sent to the browser.
+- **Admin:** requests appear under **Fare requests to book** on `/admin`, with the hidden details. Admin data needs **`ADMIN_PASSWORD`** (sent as `x-admin-key`), and is locked if that isn't set. Customers share `APP_PASSWORD`, so it can't protect admin data.
+- **Setup:** run `supabase/migrations/0004_fare_quotes.sql` and set `ADMIN_PASSWORD`.
+- **No payment is taken in this flow.** Your team confirms with the customer first. Taking money before a ticket is issued is regulated in the UK (ATOL), and airlines may restrict tickets bought through another country's market. Check both before scaling this up.
 
 ## Known limitations / later
 

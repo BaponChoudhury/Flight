@@ -37,6 +37,33 @@ export interface SearchLog {
   duration_ms: number;
 }
 
+export interface FareQuote {
+  id: string;
+  created_at: string;
+  expires_at: string;
+  market: string;
+  provider_name: string;
+  booking_url: string;
+  fare_name: string | null;
+  local_amount: number;
+  local_currency: string;
+  mid_rate: number;
+  applied_rate: number;
+  price_gbp: number;
+  uk_price_gbp: number | null;
+  passengers: { adults: number; children: number; infants: number };
+  itinerary: unknown;
+}
+
+export interface FareRequest {
+  id: string;
+  quote_id: string;
+  created_at: string;
+  status: "new" | "contacted" | "booked" | "cancelled";
+  contact: { name: string; email: string; phone: string };
+  notes: string | null;
+}
+
 export interface Store {
   kind: "supabase" | "memory";
   loadConfig(): Promise<AppConfig>;
@@ -48,8 +75,24 @@ export interface Store {
   /** Small key/value blobs (e.g. the compact airport index). */
   getKv<T>(key: string): Promise<{ value: T; updated_at: string } | null>;
   putKv(key: string, value: unknown): Promise<void>;
+  saveQuote(q: FareQuote): Promise<void>;
+  getQuote(id: string): Promise<FareQuote | null>;
+  createFareRequest(r: FareRequest): Promise<void>;
+  listFareRequests(limit?: number): Promise<(FareRequest & { quote: FareQuote | null })[]>;
   putCache(row: CacheRow): Promise<void>;
   logSearch(search: SearchLog, calls: CallLogEntry[]): Promise<void>;
+}
+
+function normaliseQuote(row: Record<string, unknown>): FareQuote {
+  const n = (k: string) => (row[k] == null ? null : Number(row[k]));
+  return {
+    ...(row as unknown as FareQuote),
+    local_amount: n("local_amount")!,
+    mid_rate: n("mid_rate")!,
+    applied_rate: n("applied_rate")!,
+    price_gbp: n("price_gbp")!,
+    uk_price_gbp: n("uk_price_gbp"),
+  };
 }
 
 function mergeSettings(rows: { key: string; value: unknown }[]): Settings {
@@ -65,6 +108,24 @@ class MemoryStore implements Store {
   private config = defaultConfig();
   private cache = new Map<string, CacheRow>();
   private kv = new Map<string, { value: unknown; updated_at: string }>();
+  private quotes = new Map<string, FareQuote>();
+  private requests: FareRequest[] = [];
+
+  async saveQuote(q: FareQuote) {
+    this.quotes.set(q.id, structuredClone(q));
+  }
+  async getQuote(id: string) {
+    return structuredClone(this.quotes.get(id) ?? null);
+  }
+  async createFareRequest(r: FareRequest) {
+    this.requests.push(structuredClone(r));
+  }
+  async listFareRequests(limit = 100) {
+    return [...this.requests]
+      .reverse()
+      .slice(0, limit)
+      .map((r) => ({ ...structuredClone(r), quote: structuredClone(this.quotes.get(r.quote_id) ?? null) }));
+  }
 
   async getKv<T>(key: string) {
     return (this.kv.get(key) as { value: T; updated_at: string } | undefined) ?? null;
@@ -171,6 +232,32 @@ class SupabaseStore implements Store {
     if (!rows.length) return;
     const { error } = await this.db.from("hub_routes").upsert(rows);
     if (error) console.warn(`hub_routes upsert failed: ${error.message}`);
+  }
+
+  async saveQuote(q: FareQuote) {
+    const { error } = await this.db.from("fare_quotes").insert(q);
+    if (error) throw new Error(`fare_quotes insert failed (run supabase/migrations/0004_fare_quotes.sql?): ${error.message}`);
+  }
+
+  async getQuote(id: string) {
+    const { data, error } = await this.db.from("fare_quotes").select("*").eq("id", id).maybeSingle();
+    if (error) throw new Error(`fare_quotes read failed: ${error.message}`);
+    return data ? normaliseQuote(data) : null;
+  }
+
+  async createFareRequest(r: FareRequest) {
+    const { error } = await this.db.from("fare_requests").insert(r);
+    if (error) throw new Error(`fare_requests insert failed: ${error.message}`);
+  }
+
+  async listFareRequests(limit = 100) {
+    const { data, error } = await this.db
+      .from("fare_requests")
+      .select("*, quote:fare_quotes(*)")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error) throw new Error(`fare_requests read failed: ${error.message}`);
+    return (data ?? []).map((r) => ({ ...(r as FareRequest), quote: r.quote ? normaliseQuote(r.quote) : null }));
   }
 
   async getKv<T>(key: string) {

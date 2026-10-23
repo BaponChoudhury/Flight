@@ -98,6 +98,9 @@ export const DEFAULT_SETTINGS: Settings = {
   hub_route_recheck_days: 30,
   unknown_bag_penalty: 0.15,
   max_parallel_calls: 12,
+  fx_margin_pct: 0.4,
+  hidden_market_min_saving_gbp: 5,
+  quote_ttl_mins: 30,
 };
 
 export function defaultConfig(): AppConfig {
