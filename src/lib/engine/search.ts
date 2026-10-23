@@ -79,6 +79,8 @@ function routeBadges(option: Pick<RouteOption, "kind" | "legs" | "connection" | 
   if (connections.some((c) => c?.overnight)) b.push("Overnight");
   if (legs.some((l) => l.bag.excessRisk)) b.push("Excess baggage risk");
   if (legs.some((l) => !l.itinerary.price.verified)) b.push("Price not confirmed");
+  // Every ticket you buy (bundled legs are on the ticket before them) must be refundable.
+  if (legs.filter((l) => !l.bundled).every((l) => l.itinerary.fareTerms?.refundable === true)) b.push("Refundable");
   return b;
 }
 
@@ -215,13 +217,19 @@ type Candidate = { out: NormalisedItinerary; back: NormalisedItinerary | null };
 
 interface Deps {
   store: Store;
+  /** Main provider (Ignav): through tickets, international legs and domestic legs. */
   provider: FlightProvider;
+  /** Extra providers searched for through tickets only (Aviasales), in parallel with everything else. */
+  throughProviders?: FlightProvider[];
   now?: () => number;
 }
 
 export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchResponse> {
   const started = Date.now();
   const { store, provider } = deps;
+  const extraProviders = deps.throughProviders ?? [];
+  // Ignav has no refund rules, so a refundable-only search uses the providers that do.
+  const refundableOnly = !!req.refundableOnly;
   const config: AppConfig = await store.loadConfig();
   const s = config.settings;
   const ctx = createCallContext(store, s);
@@ -231,7 +239,13 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
   const allowOvernight = !!req.allowOvernight;
   const maxBuffer = allowOvernight ? s.overnight_max_buffer_mins : s.max_buffer_mins;
   // Every search asks for fares that include the user's checked bags, so prices are bag-inclusive.
-  const pax = { adults: req.adults, children: req.children, infants: req.infants ?? 0, minCheckedBags: req.bags > 0 ? req.bags : null };
+  const pax = {
+    adults: req.adults,
+    children: req.children,
+    infants: req.infants ?? 0,
+    minCheckedBags: req.bags > 0 ? req.bags : null,
+    ...(refundableOnly ? { refundableOnly } : {}),
+  };
 
   const tzOf = (iata: string) => config.airports.find((a) => a.iata === iata)?.tz ?? knownTz(iata) ?? "Asia/Kolkata";
   const dates = req.flexDays === 1 ? [addDays(req.date, -1), req.date, addDays(req.date, 1)] : [req.date];
@@ -253,9 +267,13 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
     ? req.ukAirports
     : config.airports.filter((a) => a.role === "uk_origin" && a.enabled).map((a) => a.iata);
   const allHubs = config.airports.filter((a) => a.role === "india_hub" && a.enabled).map((a) => a.iata);
-  const hubs = hubsToSearch(allHubs, req.dest, config.hubRoutes, s.hub_route_recheck_days);
+  const hubs = refundableOnly ? [] : hubsToSearch(allHubs, req.dest, config.hubRoutes, s.hub_route_recheck_days);
   const skippedHubs = allHubs.filter((h) => !hubs.includes(h) && h !== req.dest);
-  if (skippedHubs.length) notes.push(`Not searching ${skippedHubs.join(", ")}: no flights to ${req.dest} last time we checked.`);
+  if (refundableOnly) {
+    if (extraProviders.length)
+      notes.push("Refundable tickets only: these fares come from Aviasales, the only source with refund rules. Split tickets built from separate searches aren't included.");
+    else errors.push("Refundable-only search isn't available: Aviasales isn't set up on this server.");
+  } else if (skippedHubs.length) notes.push(`Not searching ${skippedHubs.join(", ")}: no flights to ${req.dest} last time we checked.`);
 
   const safe = async (p: Promise<NormalisedItinerary[]>, what: string) => {
     try {
@@ -281,24 +299,31 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
     allowSelfTransfer: false,
     timeRange: req.earliestDepartHour != null ? { earliestDepartHour: req.earliestDepartHour } : null,
   };
-  const searchIntl = async (o: string, d: string, date: string, f: SearchFilters): Promise<Candidate[] | null> => {
+  const searchIntl = async (o: string, d: string, date: string, f: SearchFilters, p: FlightProvider = provider): Promise<Candidate[] | null> => {
+    const via = p === provider ? "" : ` (${p.id})`;
     if (!returnDate) {
-      const r = await safe(provider.searchOneWay(o, d, date, f, ctx), `${o}→${d} ${date}`);
+      const r = await safe(p.searchOneWay(o, d, date, f, ctx), `${o}→${d} ${date}${via}`);
       return r && r.map((out) => ({ out, back: null }));
     }
     try {
-      return await provider.searchRoundTrip(o, d, date, returnDate, f, ctx);
+      return await p.searchRoundTrip(o, d, date, returnDate, f, ctx);
     } catch (err) {
-      errors.push(`${o}⇄${d} ${date}/${returnDate}: ${(err as Error).message}`);
+      errors.push(`${o}⇄${d} ${date}/${returnDate}${via}: ${(err as Error).message}`);
       return null;
     }
   };
+
+  // Extra providers start now and run alongside every Ignav stage; they're slower (Aviasales
+  // collects prices for 10–35s) and give their own bag data, so one search per airport and date.
+  const extraThrough = Promise.all(
+    extraProviders.flatMap((p) => ukAirports.flatMap((o) => dates.map((d) => searchIntl(o, req.dest, d, throughFilters, p)))),
+  );
 
   // With bags, the bag filter makes Ignav drop protected through tickets it has no bag
   // data for (e.g. LHR–DEL–GAU on Air India), so through tickets are also searched
   // without it (+1 call per UK airport). Those keep "bag price unknown" — never a guessed fee.
   const throughVariants = pax.minCheckedBags ? [throughFilters, { ...throughFilters, minCheckedBags: null }] : [throughFilters];
-  const throughJobs = ukAirports.flatMap((o) => dates.flatMap((d) => throughVariants.map((f) => searchIntl(o, req.dest, d, f))));
+  const throughJobs = refundableOnly ? [] : ukAirports.flatMap((o) => dates.flatMap((d) => throughVariants.map((f) => searchIntl(o, req.dest, d, f))));
   const intlJobs = ukAirports.flatMap((o) => hubs.flatMap((h) => dates.map((d) => searchIntl(o, h, d, intlFilters))));
   const [throughRes, intlRes] = await Promise.all([Promise.all(throughJobs), Promise.all(intlJobs)]);
 
@@ -315,20 +340,20 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
 
   const options: RouteOption[] = [];
   let selfTransferRejected = 0;
-  for (const c of through) {
+  const addThrough = (c: Candidate) => {
     const ground = groundFor.get(c.out.origin);
     const selfTransfer = c.out.selfTransfer || !!c.back?.selfTransfer;
     if (!selfTransfer) {
       const ret = c.back ? { legs: [bagLeg(c.back, "international", true)], connection: null, ukExitMins: s.uk_arrival_exit_mins } : null;
       options.push(buildOption("through", [bagLeg(c.out, "international")], ground, req, s.uk_airport_arrival_mins, null, ret));
-      continue;
+      return;
     }
     // Ignav's own separate-ticket combination: apply the same connection rules as ours.
     const parts = splitAtIndiaEntry(c.out, tzLookup);
     const check = parts && airlineChangesHaveBuffer(c.out, minBuffer) ? checkConnection(parts[0], parts[1], parts[0].dest, tzOf(parts[0].dest), config, connOpts) : null;
     if (!parts || !check?.ok) {
       selfTransferRejected++;
-      continue;
+      return;
     }
     let ret: ReturnPart | null = null;
     if (c.back) {
@@ -339,14 +364,13 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
         : null;
       if (!backParts || !backCheck?.ok) {
         selfTransferRejected++;
-        continue;
+        return;
       }
       ret = { legs: [bagLeg(backParts[0], "domestic", true), bagLeg(backParts[1], "international", true)], connection: backCheck.connection, ukExitMins: s.uk_arrival_exit_mins };
     }
     options.push(buildOption("split", [bagLeg(parts[0], "international"), bagLeg(parts[1], "domestic", true)], ground, req, s.uk_airport_arrival_mins, check.connection, ret));
-  }
-  if (selfTransferRejected)
-    notes.push(`${selfTransferRejected} ready-made separate-ticket combinations dropped: connection too short or too long for your settings.`);
+  };
+  through.forEach(addThrough);
 
   // ----- Prune (on the outbound flight; a return fare's price sits on it) -----
   const cheapestThrough = through.length ? Math.min(...through.map((t) => t.out.price.totalGbp)) : null;
@@ -466,6 +490,12 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
   }
   if (noWayHome) notes.push(`${noWayHome} return fares dropped: no domestic flight home on ${returnDate} connects in time.`);
 
+  // Through tickets from the extra providers, with the same connection rules for their self-transfer combos.
+  const extra = (await extraThrough).flat().filter((c): c is Candidate => !!c);
+  extra.forEach(addThrough);
+  if (selfTransferRejected)
+    notes.push(`${selfTransferRejected} ready-made separate-ticket combinations dropped: connection too short or too long for your settings.`);
+
   // De-duplicate by the actual flights (the same itinerary can come back from
   // neighbouring dates, or from the with/without-bags through searches).
   // Prefer the copy whose bags Ignav confirmed, then the cheaper one.
@@ -486,6 +516,7 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
   const durationMs = Date.now() - started;
   const searchId = randomUUID();
   const paidCalls = countPaid(ctx.log);
+  const paidByProvider = Object.fromEntries([provider, ...extraProviders].map((p) => [p.id, countPaid(ctx.log, p.id)]));
   const cacheHits = ctx.log.filter((c) => c.cacheHit).length;
   await store.logSearch(
     { id: searchId, params: req, paid_calls: paidCalls, cache_hits: cacheHits, failed_calls: failed, result_count: unique.length, duration_ms: durationMs },
@@ -502,7 +533,7 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
   return {
     searchId,
     options: selectForReturn(unique),
-    stats: { paidCalls, cacheHits, failedCalls: failed, durationMs, calls: ctx.log },
+    stats: { paidCalls, paidByProvider, cacheHits, failedCalls: failed, durationMs, calls: ctx.log },
     errors: dedupeErrors(errors),
     notes,
     airportTz,
