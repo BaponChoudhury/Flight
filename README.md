@@ -2,7 +2,7 @@
 
 Finds the cheapest and fastest realistic door-to-door routes from the UK to smaller Indian cities (e.g. Guwahati, GAU). It compares airline through-tickets with self-made split tickets (UK → Indian hub, then hub → destination), applying connection buffers, terminal changes, baggage-inclusive pricing and ground travel costs.
 
-Stack: Next.js (App Router, TypeScript) · Tailwind · Supabase · Ignav flight API. Deploys to Vercel.
+Stack: Next.js (App Router, TypeScript) · Tailwind · Supabase · Ignav and Aviasales flight APIs. Deploys to Vercel.
 
 **Status: Phase 1** (core search engine, personal tool, no accounts).
 
@@ -19,6 +19,7 @@ npm run dev                  # http://localhost:3000
 | Variable | Needed for | Notes |
 |---|---|---|
 | `IGNAV_API_KEY` | Searches | Server-side only. Billed per successful request. |
+| `TRAVELPAYOUTS_TOKEN`, `TRAVELPAYOUTS_MARKER` | Aviasales fares, refundable filter | Optional. Your Travelpayouts API token and partner ID (marker). Without them, searches use Ignav only and "Refundable tickets only" is unavailable. |
 | `SUPABASE_URL` | Persistent cache/config | Optional in Phase 1. Without it, an in-memory store is used (cache and admin edits reset on restart). |
 | `SUPABASE_ANON_KEY` | Phase 2 auth | Not used yet. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Persistent cache/config | Server-side only. Never expose to the browser. |
@@ -55,7 +56,7 @@ All tables have row-level security enabled with no policies, so the public anon 
      Self-transfer itineraries are allowed in this same call (no extra cost). Ignav's ready-made separate-ticket combinations are split where they enter India. They have to meet the same buffer rules there, and also at every change of airline earlier in the trip. They're shown as split tickets whose second flight is "included" in the first price.
    - **B. International legs:** UK airport → each Indian hub that isn't known to lack flights to the destination (`hub_routes`).
 3. **Prune:**
-   - Drop international legs costing more than `prune_factor` (1.5) × the cheapest through ticket.
+   - Drop international legs costing more than `prune_factor` (1.5) × the cheapest through ticket. Each hub's shortest flight is kept anyway if it could still beat the fastest through ticket (its flight time + change time + 1h < the through ticket's), so a pricier but faster split ticket can still show as "Fastest". This can add a domestic search or two per hub.
    - Keep the cheapest `max_intl_per_group` (12) plus the 3 shortest and the 3 earliest-arriving per UK airport/hub pair. This costs no extra calls, because domestic searches are per hub and date.
 4. **Stage 2:**
    - Search hub → destination (up to 1 stop, `domestic_max_stops`) only for hubs with surviving legs.
@@ -131,6 +132,33 @@ Ignav's `market` setting changes which sellers appear for the same flights, and 
 - **Setup:** run `supabase/migrations/0004_fare_quotes.sql` and set `ADMIN_PASSWORD`.
 - **No payment is taken in this flow.** Your team confirms with the customer first. Taking money before a ticket is issued is regulated in the UK (ATOL), and airlines may restrict tickets bought through another country's market. Check both before scaling this up.
 
+## Aviasales fares and the refundable filter
+
+Every search also asks **Aviasales** (Travelpayouts Flights Search API) for through tickets, alongside Ignav. A live test (London → Delhi, Mumbai, Kolkata and Guwahati, 3 dates each) found:
+- **Far more choice:** about 400–1,700 options per search from about 30 booking sites, against 10–90 from Ignav.
+- **About the same price for the same flights:** the median gap is within about £13 for Delhi, Mumbai and Kolkata. The cheaper headline prices come from extra combinations and sellers.
+- **Bag details on about 95% of fares, and refund and change rules for each fare.** Ignav has neither for most results.
+
+How it works:
+- **Through tickets only:** one Aviasales search per UK airport and date, started at the beginning and run in parallel with every Ignav stage. International and domestic legs for split tickets still come from Ignav.
+- **Speed:** Aviasales collects prices for 10–35 seconds. The adapter stops waiting after 35s and uses what has arrived.
+- **Merging:** each trip is priced at its cheapest seller that fits your bags and filters. When Ignav and Aviasales return the same flights, the usual de-duplication keeps one: bags confirmed first, then the cheaper.
+- **Separate tickets:**
+  - fares the seller marks as self-transfer ("virtual interline") are treated like Ignav's own combinations: split where the trip enters India, with the same connection checks and warning;
+  - so are fares that mix airlines sharing no alliance, e.g. Ryanair + Azerbaijan Airlines, because sellers don't always flag them.
+- **Refund and change rules:** each fare card shows "Refundable before departure (fee about £X)" or "Non-refundable", plus whether date changes are allowed. A fare only counts as refundable when every flight on it says so. Trips where every ticket is refundable get a **Refundable** badge.
+- **"Refundable tickets only"** (search form): only refundable Aviasales fares are shown. Ignav isn't called at all, since it has no refund data, and split tickets built from separate searches aren't included. A refundable fare also skips the lower-price check, because a cheaper fare for the same flights may not be refundable.
+- **Booking links:** fetched only when the user taps **Get booking links**, as the API terms require. Prices and links last 15 minutes, so Aviasales results are cached for 10 minutes, and an expired link asks the user to search again.
+- **User details:** each search sends the user's own IP (from `x-forwarded-for`) and the site's host, as the API requires. The cache stores only the search itself, never the IP.
+- **Limits:**
+  - 200 searches per hour per user IP;
+  - access needs 50,000 monthly users for new partners.
+
+Things to know:
+- **Old API version.** This uses the v1 endpoint on `api.travelpayouts.com`. Travelpayouts announced it would stop on 15 June 2026; it still works (tested October 2026) but could stop at any time. The newer API lives on `tickets-api.travelpayouts.com`, which must be added to the network allow-list before it can be built and tested. Everything is in `src/lib/providers/aviasales/`.
+- **Market.** v1 has no market setting. In tests from a US server, results were US-market (sellers like BudgetAir.us). Real UK visitors should get UK results, but check this once deployed.
+- **Prices** come in roubles with Aviasales' own exchange rates and are converted to GBP; only 1–2% of fares are priced in GBP by the seller.
+
 ## Known limitations / later
 
 **Origins outside the UK.** The **Any airport** tab lets users fly from anywhere. Still UK-specific:
@@ -152,7 +180,7 @@ npm run gen:seed  # regenerate supabase/migrations/0002_seed.sql from src/lib/co
 ```
 
 Code map:
-- `src/lib/providers/`: the `FlightProvider` interface and the Ignav adapter. Duffel will plug in here.
+- `src/lib/providers/`: the `FlightProvider` interface, and the Ignav and Aviasales adapters. Duffel will plug in here.
 - `src/lib/engine/`:
   - `search.ts`: orchestration
   - `rules.ts`: buffers, bags, costs, scoring

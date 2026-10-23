@@ -12,6 +12,15 @@ describe("pruning", () => {
     expect(r.droppedTooExpensive).toBe(2);
   });
 
+  it("keeps each hub's fastest flight, whatever its price, if it could beat the fastest through ticket", () => {
+    // Fastest through ticket: 18h. With a 3h change and at least 1h more, only legs under 14h can beat it.
+    const r = pruneInternational([mk("DEL", 400, 14), mk("CCU", 900, 12), mk("CCU", 950, 13), mk("AMD", 990, 15)], {
+      cheapestThroughGbp: 400, factor: 1.5, maxPerGroup: 10, fastestThroughMins: 18 * 60, minBufferMins: 180,
+    });
+    expect(r.kept.map((i) => `${i.dest} ${i.price.totalGbp}`).sort()).toEqual(["CCU 900", "DEL 400"]);
+    expect(r.droppedTooExpensive).toBe(2);
+  });
+
   it("keeps everything (up to the cap) when there is no through ticket to compare with", () => {
     const r = pruneInternational([mk("DEL", 400), mk("DEL", 2000)], { cheapestThroughGbp: null, factor: 1.5, maxPerGroup: 10 });
     expect(r.kept).toHaveLength(2);

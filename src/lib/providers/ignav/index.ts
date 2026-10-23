@@ -16,7 +16,23 @@ export type IgnavBookingLinksResponse = S["BookingOptionsResponseModel"] | S["Se
 
 const BASE_URL = "https://ignav.com";
 
+// Ignav sometimes fails a search it can answer a moment later (424 "Unable to complete
+// request", rate limits, gateway errors). Failed calls aren't billed, so retry those once.
+const RETRY_STATUSES = new Set([424, 429, 500, 502, 503, 504]);
+const RETRY_DELAY_MS = 1_000;
+
 async function ignavPost<T>(path: string, body: unknown): Promise<T> {
+  try {
+    return await ignavPostOnce<T>(path, body);
+  } catch (err) {
+    const retryable = err instanceof ProviderError && (err.code === "network" || (err.httpStatus != null && RETRY_STATUSES.has(err.httpStatus)));
+    if (!retryable) throw err;
+    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    return ignavPostOnce<T>(path, body);
+  }
+}
+
+async function ignavPostOnce<T>(path: string, body: unknown): Promise<T> {
   const key = process.env.IGNAV_API_KEY;
   if (!key) throw new ProviderError("IGNAV_API_KEY is not set on the server", null, "missing_api_key");
   let res: Response;
@@ -29,7 +45,9 @@ async function ignavPost<T>(path: string, body: unknown): Promise<T> {
       signal: AbortSignal.timeout(45_000),
     });
   } catch (err) {
-    throw new ProviderError(`Could not reach Ignav: ${(err as Error).message}`, null, "network");
+    // A timed-out call already used 45s of the request's budget: don't retry it.
+    const timedOut = (err as Error).name === "TimeoutError";
+    throw new ProviderError(`Could not reach Ignav: ${(err as Error).message}`, null, timedOut ? "timeout" : "network");
   }
   const text = await res.text();
   let json: unknown = null;

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { runSearch, validateRequest } from "@/lib/engine/search";
+import { aviasalesConfigured, createAviasalesProvider } from "@/lib/providers/aviasales";
 import { ignavProvider } from "@/lib/providers/ignav";
+import { clientOf } from "@/lib/client";
 import { getStore } from "@/lib/store";
 import type { SearchRequest } from "@/lib/types";
 
@@ -17,7 +19,9 @@ export async function POST(request: Request) {
   const invalid = validateRequest(body);
   if (invalid) return NextResponse.json({ error: invalid }, { status: 400 });
   try {
-    const result = await runSearch(body, { store: getStore(), provider: ignavProvider });
+    // Aviasales needs the searching user's own IP and our site's host on every search.
+    const throughProviders = aviasalesConfigured() ? [createAviasalesProvider(clientOf(request))] : [];
+    const result = await runSearch(body, { store: getStore(), provider: ignavProvider, throughProviders });
     return NextResponse.json(result);
   } catch (err) {
     console.error("search failed", err);

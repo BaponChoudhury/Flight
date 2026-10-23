@@ -39,7 +39,13 @@ export function createLimiter(max: number) {
 
 export function createCallContext(store: Store, settings: Settings): CallContext {
   const log: CallLogEntry[] = [];
-  const limit = createLimiter(settings.max_parallel_calls);
+  // One limit per provider: slow Aviasales searches (10–35s each) mustn't hold up Ignav calls.
+  const limiters = new Map<string, ReturnType<typeof createLimiter>>();
+  const limitFor = (provider: string) => {
+    let l = limiters.get(provider);
+    if (!l) limiters.set(provider, (l = createLimiter(settings.max_parallel_calls)));
+    return l;
+  };
   // Identical requests inside one search share a single in-flight call.
   const inflight = new Map<string, ReturnType<CallContext["call"]>>();
 
@@ -51,7 +57,7 @@ export function createCallContext(store: Store, settings: Settings): CallContext
       return { raw: cached.raw_response, fetchedAt: cached.fetched_at, fromCache: true };
     }
     try {
-      const raw = await limit(req.fetcher);
+      const raw = await limitFor(req.provider)(req.fetcher);
       const fetchedAt = new Date().toISOString();
       await store.putCache({
         cache_key: key,
@@ -60,7 +66,7 @@ export function createCallContext(store: Store, settings: Settings): CallContext
         request: req.body,
         raw_response: raw,
         fetched_at: fetchedAt,
-        expires_at: new Date(Date.now() + settings.cache_ttl_mins * 60_000).toISOString(),
+        expires_at: new Date(Date.now() + (req.ttlMins ?? settings.cache_ttl_mins) * 60_000).toISOString(),
       });
       log.push({ provider: req.provider, endpoint: req.endpoint, label: req.label, cacheHit: false, ok: true, httpStatus: 200, latencyMs: Date.now() - started });
       return { raw, fetchedAt, fromCache: false };
@@ -95,7 +101,7 @@ export function createCallContext(store: Store, settings: Settings): CallContext
   };
 }
 
-/** Successful, non-cached calls — the ones Ignav bills for. */
-export function countPaid(log: CallLogEntry[]): number {
-  return log.filter((c) => !c.cacheHit && c.ok).length;
+/** Successful, non-cached calls — the ones Ignav bills for (Aviasales counts against its hourly limit). */
+export function countPaid(log: CallLogEntry[], provider?: CallLogEntry["provider"]): number {
+  return log.filter((c) => !c.cacheHit && c.ok && (!provider || c.provider === provider)).length;
 }

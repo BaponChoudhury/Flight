@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { applyGround, groundChoices, pickGround, rankOptions, type GroundChoice } from "@/lib/engine/rules";
 import { formatDuration, formatLocalDay, formatLocalTime } from "@/lib/engine/time";
-import type { Badge, BookingLink, FlightLeg, RouteOption, SearchRequest, SearchResponse, Settings } from "@/lib/types";
+import type { Badge, BookingLink, FareTerms, FlightLeg, ProviderId, RouteOption, SearchRequest, SearchResponse, Settings } from "@/lib/types";
 import { EMPTY_DRAFT, GroundPanel, toInput, type GroundDraft } from "./GroundPanel";
 
 const gbp2 = (n: number) => `£${n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -17,7 +17,29 @@ const BADGE_STYLE: Record<Badge, string> = {
   Overnight: "bg-indigo-100 text-indigo-900 dark:bg-indigo-900/40 dark:text-indigo-200",
   "Excess baggage risk": "bg-rose-100 text-rose-900 dark:bg-rose-900/40 dark:text-rose-200",
   "Price not confirmed": "bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200",
+  Refundable: "bg-teal-100 text-teal-900 dark:bg-teal-900/40 dark:text-teal-200",
 };
+
+/** "Refundable before departure (fee £120) · changes allowed", from the seller's fare rules. */
+function fareTermsText(t: FareTerms): string | null {
+  const parts: string[] = [];
+  if (t.refundable === true) parts.push(`Refundable before departure${t.refundFeeGbp ? ` (fee about ${gbp(t.refundFeeGbp)})` : ""}`);
+  else if (t.refundable === false) parts.push("Non-refundable");
+  if (t.changeable === true) parts.push("date changes allowed");
+  else if (t.changeable === false) parts.push("no date changes");
+  return parts.length ? parts.join(" · ") : null;
+}
+
+// TESTING ONLY: shows which fare source (Ignav / Aviasales) each result came from.
+// Set to false before real users see the site.
+const SHOW_SOURCE_TAGS = true;
+const SOURCE_NAME: Record<ProviderId, string> = { ignav: "Ignav", aviasales: "Aviasales", duffel: "Duffel" };
+
+function SourceTag({ providers }: { providers: ProviderId[] }) {
+  if (!SHOW_SOURCE_TAGS || !providers.length) return null;
+  const names = [...new Set(providers)].map((p) => SOURCE_NAME[p] ?? p).join(" + ");
+  return <span className="rounded-full border border-dashed border-slate-400 px-2 py-0.5 text-xs font-medium text-slate-600 dark:text-slate-300">via {names}</span>;
+}
 
 type Tz = Record<string, string>;
 const UK_TZ = "Europe/London";
@@ -46,6 +68,7 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
         providerRef: it.providerRef,
         bookingKey: it.bookingKey,
         priceGbp: it.price.totalGbp,
+        refundable: it.fareTerms?.refundable === true,
         adults: req.adults,
         children: req.children,
         infants: req.infants ?? 0,
@@ -65,7 +88,7 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
   return (
     <li className="relative border-l-2 border-sky-600 pl-4">
       <p className="font-semibold">
-        ✈ {it.origin} {when(it.departUtc, tz[it.origin] ?? UK_TZ)} → {it.dest} {when(it.arriveUtc, tz[it.dest] ?? UK_TZ)}
+        ✈ {it.origin} {when(it.departUtc, tz[it.origin] ?? UK_TZ)} → {it.dest} {when(it.arriveUtc, tz[it.dest] ?? UK_TZ)} <SourceTag providers={[it.provider]} />
       </p>
       <p className="text-sm text-slate-600 dark:text-slate-400">
         {airline} · {flights} · {formatDuration(it.durationMins)} · {via.length ? `stops in ${via.join(", ")}` : "direct"}
@@ -79,6 +102,11 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
           </span>
         )}
       </p>
+      {!leg.bundled && (it.seller || it.fareTerms) && (
+        <p className="text-sm text-slate-600 dark:text-slate-400">
+          {[it.seller && `Price from ${it.seller}`, it.fareTerms && fareTermsText(it.fareTerms)].filter(Boolean).join(" · ")}
+        </p>
+      )}
       <div className="mt-1">
         {leg.bundled ? (
           <p className="text-sm text-slate-600 dark:text-slate-400">Booked with the flight above.</p>
@@ -236,9 +264,10 @@ function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz:
             Back: leave {o.dest} {when(o.back.leaveDestUtc, destTz)} · home {when(o.back.arriveHomeUtc, backHomeTz)}
           </p>
         )}
-        {o.badges.length > 0 && (
+        {(o.badges.length > 0 || SHOW_SOURCE_TAGS) && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {o.badges.map((b) => <span key={b} className={`rounded-full px-2 py-0.5 text-xs font-medium ${BADGE_STYLE[b]}`}>{b}</span>)}
+            <SourceTag providers={[...o.legs, ...(o.back?.legs ?? [])].map((l) => l.itinerary.provider)} />
           </div>
         )}
         <p className="mt-2 text-sm font-medium text-sky-700 dark:text-sky-400">{open ? "Hide details" : "Show details"}</p>
@@ -391,7 +420,8 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
     <section className="space-y-4">
       <div className="rounded-lg bg-slate-100 p-3 text-sm dark:bg-slate-800">
         <p>
-          <strong>{data.options.length}</strong> options · <strong>{s.paidCalls}</strong> Ignav calls used · {s.cacheHits} from cache
+          <strong>{data.options.length}</strong> options · <strong>{s.paidByProvider?.ignav ?? s.paidCalls}</strong> Ignav calls used
+          {s.paidByProvider?.aviasales != null && ` · ${s.paidByProvider.aviasales} Aviasales searches`} · {s.cacheHits} from cache
           {s.failedCalls > 0 && ` · ${s.failedCalls} failed`} · {(s.durationMs / 1000).toFixed(1)}s
         </p>
         {asOf && <p>Prices as of {formatLocalTime(asOf, UK_TZ)} UK time (cached up to {settings.cache_ttl_mins / 60}h).</p>}

@@ -1,7 +1,7 @@
 // Domain types shared by the search engine, API routes and UI.
 // All instants are ISO-8601 UTC strings; local times are derived for display only.
 
-export type ProviderId = "ignav" | "duffel";
+export type ProviderId = "ignav" | "aviasales" | "duffel";
 export type RouteType = "international" | "domestic";
 
 // ---------- Config tables ----------
@@ -140,11 +140,24 @@ export interface NormalisedItinerary {
     carryOnPieces: number | null;
   };
   selfTransfer: boolean;
+  /** Refund and change rules, when the provider gives them (Aviasales does, Ignav doesn't). */
+  fareTerms?: FareTerms | null;
+  /** Booking site whose price this is, when known before booking links are fetched. */
+  seller?: string | null;
   observedAt: string | null;
   fetchedAt: string;
   fromCache: boolean;
   /** How to find this whole Ignav itinerary again by flight details once the ignav_id expires. */
   bookingKey?: BookingKey;
+}
+
+export interface FareTerms {
+  /** Refund before departure: true / false, or null when the seller doesn't say. */
+  refundable: boolean | null;
+  /** Fee for a refund before departure, whole party, in GBP; null = none stated. */
+  refundFeeGbp: number | null;
+  /** Date change before departure allowed. */
+  changeable: boolean | null;
 }
 
 export interface BookingKey {
@@ -190,6 +203,7 @@ export interface SearchRequest {
   latestArriveHour?: number | null; // destination local
   minBufferMins?: number | null;
   allowOvernight?: boolean;
+  refundableOnly?: boolean; // only tickets refundable before departure (Aviasales fares; Ignav has no refund data)
   ukAirports?: string[] | null; // departure airports, any country, e.g. ["BHX", "MAN", "LON"] or ["FRA"]; city codes (LON, PAR) allowed
 }
 
@@ -227,7 +241,8 @@ export type Badge =
   | "Terminal change"
   | "Overnight"
   | "Excess baggage risk"
-  | "Price not confirmed";
+  | "Price not confirmed"
+  | "Refundable";
 
 export interface ReturnJourney {
   legs: FlightLeg[];
@@ -284,6 +299,8 @@ export interface SearchResponse {
   options: RouteOption[];
   stats: {
     paidCalls: number;
+    /** Paid calls per provider, e.g. { ignav: 40, aviasales: 3 }. */
+    paidByProvider?: Partial<Record<ProviderId, number>>;
     cacheHits: number;
     failedCalls: number;
     durationMs: number;
