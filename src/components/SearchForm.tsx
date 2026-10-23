@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { LONDON, UK_AIRPORTS, type NearbyAirport } from "@/lib/config/places";
+import type { AirportRecord } from "@/lib/airports-index";
 import { AirportPicker } from "./AirportPicker";
 import type { AppConfig, SearchRequest } from "@/lib/types";
 
@@ -25,6 +26,8 @@ export function SearchForm({
   busy: boolean;
   onSearch: (req: SearchRequest) => void;
 }) {
+  const [fromMode, setFromMode] = useState<"uk" | "any">("uk");
+  const [picked, setPicked] = useState<AirportRecord[]>([]);
   const [from, setFrom] = useState("");
   const [dest, setDest] = useState<string | null>("GAU");
   const [located, setLocated] = useState<{ name: string; airports: NearbyAirport[] } | null>(null);
@@ -82,19 +85,79 @@ export function SearchForm({
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!from.trim()) return setFormError("Enter where you're travelling from.");
+    const origins = fromMode === "uk" ? airports : picked.map((a) => a.code);
+    if (fromMode === "uk" && !from.trim()) return setFormError("Enter where you're travelling from.");
     if (!dest) return setFormError("Pick a destination from the suggestions, or type its 3-letter airport code.");
-    if (!airports.length) return setFormError("Pick at least one UK airport.");
-    if (airports.length > 5) return setFormError("Pick at most 5 UK airports (each one adds searches).");
+    if (!origins.length) return setFormError(fromMode === "uk" ? "Pick at least one UK airport." : "Pick at least one departure airport.");
+    if (origins.length > 5) return setFormError("Pick at most 5 departure airports (each one adds searches).");
     if ((req.infants ?? 0) > req.adults) return setFormError("Each infant needs an adult (one infant per adult).");
     if (tripType === "return" && !returnDate) return setFormError("Pick the date you're coming back.");
     if (tripType === "return" && returnDate <= req.date) return setFormError("The return date must be after the departure date.");
     setFormError("");
-    onSearch({ ...req, originArea: located?.name ?? from.trim(), dest, ukAirports: airports, returnDate: tripType === "return" ? returnDate : null });
+    onSearch({
+      ...req,
+      originArea: fromMode === "uk" ? (located?.name ?? from.trim()) : "",
+      dest,
+      ukAirports: origins,
+      returnDate: tripType === "return" ? returnDate : null,
+    });
   }
 
   return (
     <form className="space-y-4" onSubmit={submit}>
+      <div role="tablist" aria-label="Where from" className="grid grid-cols-2 gap-1 rounded-lg bg-slate-200 p-1 dark:bg-slate-800">
+        {(
+          [
+            ["uk", "From the UK"],
+            ["any", "Any airport"],
+          ] as const
+        ).map(([m, text]) => (
+          <button
+            key={m}
+            type="button"
+            role="tab"
+            aria-selected={fromMode === m}
+            onClick={() => setFromMode(m)}
+            className={`rounded-md py-2 text-base font-medium ${fromMode === m ? "bg-white shadow dark:bg-slate-600" : "text-slate-600 dark:text-slate-300"}`}
+          >
+            {text}
+          </button>
+        ))}
+      </div>
+
+      {fromMode === "any" && (
+        <div>
+          <label className={label} htmlFor="from-any">Fly from (any airport, up to 5)</label>
+          <AirportPicker
+            id="from-any"
+            placeholder="Type a city or airport, e.g. Frankfurt"
+            onPick={(a) => {
+              setPicked((p) => (p.some((x) => x.code === a.code) || p.length >= 5 ? p : [...p, a]));
+            }}
+          />
+          {picked.length > 0 && (
+            <ul className="mt-2 flex flex-wrap gap-2" aria-label="Departure airports">
+              {picked.map((a) => (
+                <li key={a.code} className="flex items-center gap-1 rounded-full bg-sky-100 py-1 pl-3 pr-1 text-sm dark:bg-sky-900/50">
+                  {a.city} ({a.code})
+                  <button
+                    type="button"
+                    aria-label={`Remove ${a.code}`}
+                    className="rounded-full px-2 text-base leading-none"
+                    onClick={() => setPicked((p) => p.filter((x) => x.code !== a.code))}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-1 text-xs text-slate-500">Tip: a 3-letter city code like PAR or NYC (then Enter) searches all of that city&apos;s airports.</p>
+        </div>
+      )}
+
+      {fromMode === "uk" && (
+      <>
       <div>
         <label className={label} htmlFor="from">From (UK town or postcode)</label>
         <div className="flex gap-2">
@@ -112,7 +175,6 @@ export function SearchForm({
               }
             }}
             autoComplete="address-level2"
-            required
           />
           <button type="button" onClick={findAirports} className="shrink-0 rounded-lg border border-slate-300 px-3 text-sm font-medium dark:border-slate-600">
             {locating ? "…" : "Find airports"}
@@ -150,6 +212,8 @@ export function SearchForm({
           )}
           <p className="mt-1 text-xs text-slate-500">&quot;London (all airports)&quot; searches Heathrow, Gatwick, Stansted and others in one go.</p>
         </fieldset>
+      )}
+      </>
       )}
 
       <div>

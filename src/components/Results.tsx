@@ -209,6 +209,9 @@ function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz:
   const other = groundAlts.find((g) => g.mode !== o.ground.mode);
   const [open, setOpen] = useState(false);
   const destTz = tz[o.dest] ?? "Asia/Kolkata";
+  // Home-side times are shown in the departure airport's timezone (not always the UK).
+  const homeTz = tz[o.ukAirport] ?? UK_TZ;
+  const backHomeTz = o.back ? (tz[o.back.legs[o.back.legs.length - 1].itinerary.dest] ?? homeTz) : homeTz;
   const c = o.connection;
   return (
     <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
@@ -222,11 +225,11 @@ function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz:
         </div>
         <p className="mt-1 text-base">{routeLabel(o)}{o.back && " · return"}</p>
         <p className="text-sm text-slate-600 dark:text-slate-400">
-          {o.back && "Out: "}Leave home {when(o.leaveHomeUtc, UK_TZ)} · arrive {when(o.arriveUtc, destTz)}
+          {o.back && "Out: "}Leave home {when(o.leaveHomeUtc, homeTz)} · arrive {when(o.arriveUtc, destTz)}
         </p>
         {o.back && (
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Back: leave {o.dest} {when(o.back.leaveDestUtc, destTz)} · home {when(o.back.arriveHomeUtc, UK_TZ)}
+            Back: leave {o.dest} {when(o.back.leaveDestUtc, destTz)} · home {when(o.back.arriveHomeUtc, backHomeTz)}
           </p>
         )}
         {o.badges.length > 0 && (
@@ -247,7 +250,7 @@ function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz:
           )}
           <ol className="space-y-3">
             <li className="border-l-2 border-slate-400 pl-4">
-              <p className="font-semibold">🏠 Leave {req.originArea} {when(o.leaveHomeUtc, UK_TZ)}</p>
+              <p className="font-semibold">🏠 Leave {req.originArea || "home"} {when(o.leaveHomeUtc, homeTz)}</p>
               <p className="text-sm text-slate-600 dark:text-slate-400">
                 {o.ground.mode === "not set"
                   ? `Travel to ${o.ukAirport} not entered yet — add it under "Getting to the airport".`
@@ -276,7 +279,7 @@ function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz:
                 {o.back.connection && <ConnectionStep c={o.back.connection} />}
                 {o.back.legs.slice(1).map((l, i) => <LegBlock key={`back-${l.itinerary.providerRef}-${i}`} leg={l} tz={tz} req={req} />)}
                 <li className="border-l-2 border-slate-400 pl-4">
-                  <p className="font-semibold">🏠 Home {when(o.back.arriveHomeUtc, UK_TZ)}</p>
+                  <p className="font-semibold">🏠 Home {when(o.back.arriveHomeUtc, backHomeTz)}</p>
                   <p className="text-sm text-slate-600 dark:text-slate-400">
                     {o.ground.mode === "not set"
                       ? `About 1h to get through ${o.back.legs[o.back.legs.length - 1].itinerary.dest} airport; travel home not entered yet.`

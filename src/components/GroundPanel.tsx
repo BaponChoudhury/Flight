@@ -88,10 +88,10 @@ export function GroundPanel({
 }) {
   return (
     <details open className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
-      <summary className="cursor-pointer font-semibold">Getting to the airport from {originArea}</summary>
+      <summary className="cursor-pointer font-semibold">Getting to the airport{originArea ? ` from ${originArea}` : ""}</summary>
       <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
         Tap a link to check the price, then enter it here. Results update straight away — no new search needed. Google Maps links open with your
-        journey filled in; the rail and coach sites open their search page. Times can be minutes (80) or hours (1:20).
+        journey filled in{originArea ? "" : " from where you are now"}; the rail and coach sites open their search page (UK). Times can be minutes (80) or hours (1:20).
         {returnTrip && " Enter one-way prices — we count them twice for the return."}
       </p>
       <div className="mt-3 space-y-4">
@@ -104,7 +104,7 @@ export function GroundPanel({
           const links = groundLinks(originArea, a);
           return (
             <fieldset key={a} className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800/60">
-              <legend className="px-1 font-semibold">{originArea} → {a}</legend>
+              <legend className="px-1 font-semibold">{originArea || "Home"} → {a}</legend>
               <div className="grid grid-cols-[4rem_1fr_1fr] items-center gap-x-2 gap-y-1 text-sm">
                 <span />
                 <span className="font-medium">Price £</span>

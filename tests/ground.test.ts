@@ -42,3 +42,19 @@ describe("check-price links", () => {
     for (const x of [...l.train, ...l.coach, ...l.cab]) expect(x.href.startsWith("https://")).toBe(true);
   });
 });
+
+describe("any-airport origins", () => {
+  it("omits the Maps origin so it starts from the user's location", () => {
+    const url = new URL(mapsDirections("", "Frankfurt Airport", "transit"));
+    expect(url.searchParams.has("origin")).toBe(false);
+    expect(url.searchParams.get("destination")).toBe("Frankfurt Airport");
+  });
+
+  it("accepts departure airports without a home town", async () => {
+    const { validateRequest } = await import("@/lib/engine/search");
+    const base = { dest: "GAU", date: "2026-12-10", flexDays: 0 as const, adults: 1, children: 0, bags: 1 };
+    expect(validateRequest({ ...base, originArea: "", ukAirports: ["FRA", "PAR"] })).toBeNull();
+    expect(validateRequest({ ...base, originArea: "", ukAirports: [] })).toMatch(/travelling from/);
+    expect(validateRequest({ ...base, originArea: "", ukAirports: ["FRA", "MUC", "CDG", "AMS", "DXB", "DOH"] })).toMatch(/1 and 5/);
+  });
+});

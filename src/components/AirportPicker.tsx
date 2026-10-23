@@ -17,12 +17,15 @@ export function AirportPicker({
   country,
   initial,
   onChange,
+  onPick,
   placeholder,
 }: {
   id: string;
   country?: string;
   initial?: AirportRecord | null;
-  onChange: (code: string | null) => void;
+  onChange?: (code: string | null) => void;
+  /** Multi-select mode: called with each chosen airport, and the box clears for the next one. */
+  onPick?: (airport: AirportRecord) => void;
   placeholder?: string;
 }) {
   const [text, setText] = useState(initial ? airportLabel(initial) : "");
@@ -60,17 +63,31 @@ export function AirportPicker({
   }, [text, country]);
 
   function choose(a: AirportRecord) {
-    setText(airportLabel(a));
     setResults([]);
     setOpen(false);
-    onChange(a.code);
+    if (onPick) {
+      onPick(a);
+      setText("");
+      return;
+    }
+    setText(airportLabel(a));
+    onChange?.(a.code);
   }
 
   function edit(v: string) {
     setText(v);
     setOpen(true);
     const code = /^\s*([A-Za-z]{3})\s*$/.exec(v)?.[1] ?? /\(([A-Z]{3})\)\s*$/.exec(v)?.[1];
-    onChange(code ? code.toUpperCase() : null);
+    onChange?.(code ? code.toUpperCase() : null);
+  }
+
+  /** In multi-select mode, Enter on a bare 3-letter code (e.g. PAR, a city code) adds it as typed. */
+  function addTypedCode(): boolean {
+    const code = /^\s*([A-Za-z]{3})\s*$/.exec(text)?.[1]?.toUpperCase();
+    if (!onPick || !code || results.some((r) => r.code === code)) return false;
+    onPick({ code, city: "All airports", name: "Typed airport or city code", country: "", lat: 0, lon: 0 });
+    setText("");
+    return true;
   }
 
   return (
@@ -92,6 +109,10 @@ export function AirportPicker({
         }}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         onKeyDown={(e) => {
+          if (e.key === "Enter" && addTypedCode()) {
+            e.preventDefault();
+            return;
+          }
           if (!results.length) return;
           if (e.key === "ArrowDown") {
             e.preventDefault();

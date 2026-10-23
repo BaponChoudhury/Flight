@@ -43,7 +43,7 @@ export function selectForReturn<T extends { costs: { total: number }; totalMins:
 export function validateRequest(r: SearchRequest): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(r.date)) return "Pick a departure date.";
   if (!/^[A-Z]{3}$/.test(r.dest ?? "")) return "Pick a destination airport in India.";
-  if (!r.originArea?.trim()) return "Enter where you're travelling from.";
+  if (!r.originArea?.trim() && !r.ukAirports?.length) return "Enter where you're travelling from, or pick departure airports.";
   if (r.ukAirports != null && (!r.ukAirports.length || r.ukAirports.length > 5 || r.ukAirports.some((a) => !/^[A-Z]{3}$/.test(a))))
     return "Pick between 1 and 5 UK airports.";
   if (!(r.adults >= 1 && r.adults <= 9)) return "Adults must be between 1 and 9.";
@@ -237,9 +237,9 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
   const dates = req.flexDays === 1 ? [addDays(req.date, -1), req.date, addDays(req.date, 1)] : [req.date];
 
   // Admin defaults for this home area, if any ("Stafford" matches "Stafford, Staffordshire").
-  const area = req.originArea.trim().toLowerCase();
+  const area = (req.originArea ?? "").trim().toLowerCase();
   const configured = new Map<string, GroundAccess>();
-  for (const g of config.groundAccess.filter((g) => area.startsWith(g.origin_area.toLowerCase()))) {
+  for (const g of config.groundAccess.filter((g) => area && area.startsWith(g.origin_area.toLowerCase()))) {
     const prev = configured.get(g.airport);
     if (!prev || groundCost(g, 1) < groundCost(prev, 1)) configured.set(g.airport, g);
   }

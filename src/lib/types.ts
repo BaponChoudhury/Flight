@@ -172,7 +172,7 @@ export interface BookingLink {
 // ---------- Search ----------
 
 export interface SearchRequest {
-  originArea: string;
+  originArea: string; // home town (UK mode); empty when departure airports were picked directly
   dest: string;
   date: string; // YYYY-MM-DD, UK local departure date
   returnDate?: string | null; // YYYY-MM-DD, date leaving the destination; empty = one-way
@@ -186,7 +186,7 @@ export interface SearchRequest {
   latestArriveHour?: number | null; // destination local
   minBufferMins?: number | null;
   allowOvernight?: boolean;
-  ukAirports?: string[] | null; // e.g. ["BHX", "MAN", "LON"]; LON = all London airports
+  ukAirports?: string[] | null; // departure airports, any country, e.g. ["BHX", "MAN", "LON"] or ["FRA"]; city codes (LON, PAR) allowed
 }
 
 export interface BagAssessment {

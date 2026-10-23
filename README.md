@@ -36,7 +36,9 @@ All tables have row-level security enabled with no policies, so the public anon 
 
 ## Search form
 
-- **From:** any UK town or postcode. `/api/locate` looks it up with [postcodes.io](https://postcodes.io), which is free and needs no key. It then suggests the 2 nearest regional airports within 250km, plus **London (all airports)**. The list is in `src/lib/config/places.ts`. You can untick airports or add others. If the lookup fails, you pick airports by hand.
+- **From**, in two tabs:
+  - **From the UK:** any UK town or postcode. `/api/locate` looks it up with [postcodes.io](https://postcodes.io), which is free and needs no key. It then suggests the 2 nearest regional airports within 250km, plus **London (all airports)**. The list is in `src/lib/config/places.ts`. You can untick airports or add others. If the lookup fails, you pick airports by hand.
+  - **Any airport:** search the worldwide OurAirports list and pick up to 5 departure airports, shown as removable tags. A typed 3-letter city code plus Enter (e.g. `PAR`, `NYC`) searches all that city's airports. Departure, "leave home" and "home" times use each airport's own timezone. Prices stay in GBP (UK market), and the train/coach/cab panel's Google Maps links start from the user's current location.
   - `LON` is sent to Ignav as one origin and returns flights from LHR, LGW, STN, LTN and so on in a single call.
   - The server needs network access to `api.postcodes.io`.
 - **To:** any Indian airport, found as you type through `/api/airports`. It uses the free [OurAirports](https://github.com/davidmegginson/ourairports-data) list: about 4,000 airports with scheduled flights worldwide, 116 of them in India. The server downloads it, keeps a compact copy in Supabase (`kv` table, `0003_kv.sql`) and refreshes it every 30 days. Typing never calls Ignav, so it costs nothing. You can also type a 3-letter code.
@@ -128,13 +130,10 @@ Ignav's `market` setting changes which sellers appear for the same flights, and 
 
 ## Known limitations / later
 
-**Origins outside the UK (planned for after Phases 2–4).** Today the app assumes the traveller starts in the UK:
-- The town lookup uses postcodes.io, which only covers the UK. Plan: a free worldwide geocoder, e.g. Open-Meteo geocoding, keeping postcodes.io for UK postcodes.
-- Nearest airports come from a fixed list of 21 UK airports (`src/lib/config/places.ts`). Plan: the 3 nearest *large* airports within about 300 km, taken from the OurAirports index already used for "To", with multi-airport cities grouped (as `LON` is).
-- "Leave home" and "home" times are shown in UK time. Plan: the departure airport's timezone.
-- Prices use Ignav's `GB` market and GBP. Plan: market and currency chosen from the traveller's country.
-
-The search engine itself (Indian hubs, connection rules, return fares, train/cab inputs) needs no changes.
+**Origins outside the UK.** The **Any airport** tab lets users fly from anywhere. Still UK-specific:
+- The town lookup in the **From the UK** tab, which uses postcodes.io (UK only).
+- Prices are in GBP from the UK market.
+- The rail and coach "check price" links are for UK operators.
 
 ## Admin
 

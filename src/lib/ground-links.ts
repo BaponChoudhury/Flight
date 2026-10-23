@@ -12,14 +12,15 @@ export interface GroundLink {
 }
 
 /** "LHR" → "London Heathrow Airport", the text Google Maps resolves best. */
-export function airportPlaceName(code: string): string {
-  const name = UK_AIRPORTS.find((a) => a.code === code)?.name;
+export function airportPlaceName(code: string, knownName?: string): string {
+  const name = UK_AIRPORTS.find((a) => a.code === code)?.name ?? knownName;
   if (!name) return `${code} airport`;
   return /airport/i.test(name) ? name : `${name} Airport`;
 }
 
+/** With no origin, Google Maps starts from the device's current location. */
 export function mapsDirections(origin: string, destination: string, mode: "transit" | "driving"): string {
-  const q = new URLSearchParams({ api: "1", origin, destination, travelmode: mode });
+  const q = new URLSearchParams({ api: "1", ...(origin.trim() ? { origin } : {}), destination, travelmode: mode });
   return `https://www.google.com/maps/dir/?${q.toString()}`;
 }
 
