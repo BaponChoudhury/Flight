@@ -85,7 +85,8 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
                 <a href={l.url} target="_blank" rel="noopener noreferrer" className="text-sky-700 underline dark:text-sky-400">
                   Book with {l.providerName}
                 </a>
-                {l.price && ` · ${l.price.currency} ${l.price.amount.toFixed(0)}`}
+                {l.fareName && <span className="ml-1 rounded bg-slate-200 px-1.5 py-0.5 text-xs dark:bg-slate-700">{l.fareName}</span>}
+                {l.price && l.price.amount > 0 && ` · ${l.price.currency} ${l.price.amount.toFixed(0)}`}
                 {!l.exactFlight && " (search page)"}
               </li>
             ))}
