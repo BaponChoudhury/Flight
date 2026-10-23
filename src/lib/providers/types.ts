@@ -8,6 +8,8 @@ export interface SearchFilters {
   minCheckedBags?: number | null;
   maxStops?: number | null;
   allowSelfTransfer: boolean;
+  /** Only fares refundable before departure. Providers without refund data return nothing. */
+  refundableOnly?: boolean;
   /** Hours (0–23) in the departure airport's local time, and arrival hours in the arrival airport's local time. */
   timeRange?: {
     earliestDepartHour?: number | null;
@@ -23,6 +25,8 @@ export interface ProviderCall {
   /** Request body; also the cache identity, so it must be deterministic. */
   body: unknown;
   label: string;
+  /** Cache lifetime for this call; defaults to settings.cache_ttl_mins. */
+  ttlMins?: number;
   /** Searches that legitimately return no results are cached too. */
   fetcher: () => Promise<unknown>;
 }

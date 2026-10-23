@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { applyGround, groundChoices, pickGround, rankOptions, type GroundChoice } from "@/lib/engine/rules";
 import { formatDuration, formatLocalDay, formatLocalTime } from "@/lib/engine/time";
-import type { Badge, BookingLink, FlightLeg, RouteOption, SearchRequest, SearchResponse, Settings } from "@/lib/types";
+import type { Badge, BookingLink, FareTerms, FlightLeg, RouteOption, SearchRequest, SearchResponse, Settings } from "@/lib/types";
 import { EMPTY_DRAFT, GroundPanel, toInput, type GroundDraft } from "./GroundPanel";
 
 const gbp2 = (n: number) => `£${n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -17,7 +17,18 @@ const BADGE_STYLE: Record<Badge, string> = {
   Overnight: "bg-indigo-100 text-indigo-900 dark:bg-indigo-900/40 dark:text-indigo-200",
   "Excess baggage risk": "bg-rose-100 text-rose-900 dark:bg-rose-900/40 dark:text-rose-200",
   "Price not confirmed": "bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200",
+  Refundable: "bg-teal-100 text-teal-900 dark:bg-teal-900/40 dark:text-teal-200",
 };
+
+/** "Refundable before departure (fee £120) · changes allowed", from the seller's fare rules. */
+function fareTermsText(t: FareTerms): string | null {
+  const parts: string[] = [];
+  if (t.refundable === true) parts.push(`Refundable before departure${t.refundFeeGbp ? ` (fee about ${gbp(t.refundFeeGbp)})` : ""}`);
+  else if (t.refundable === false) parts.push("Non-refundable");
+  if (t.changeable === true) parts.push("date changes allowed");
+  else if (t.changeable === false) parts.push("no date changes");
+  return parts.length ? parts.join(" · ") : null;
+}
 
 type Tz = Record<string, string>;
 const UK_TZ = "Europe/London";
@@ -46,6 +57,7 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
         providerRef: it.providerRef,
         bookingKey: it.bookingKey,
         priceGbp: it.price.totalGbp,
+        refundable: it.fareTerms?.refundable === true,
         adults: req.adults,
         children: req.children,
         infants: req.infants ?? 0,
@@ -79,6 +91,11 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
           </span>
         )}
       </p>
+      {!leg.bundled && (it.seller || it.fareTerms) && (
+        <p className="text-sm text-slate-600 dark:text-slate-400">
+          {[it.seller && `Price from ${it.seller}`, it.fareTerms && fareTermsText(it.fareTerms)].filter(Boolean).join(" · ")}
+        </p>
+      )}
       <div className="mt-1">
         {leg.bundled ? (
           <p className="text-sm text-slate-600 dark:text-slate-400">Booked with the flight above.</p>
@@ -391,7 +408,8 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
     <section className="space-y-4">
       <div className="rounded-lg bg-slate-100 p-3 text-sm dark:bg-slate-800">
         <p>
-          <strong>{data.options.length}</strong> options · <strong>{s.paidCalls}</strong> Ignav calls used · {s.cacheHits} from cache
+          <strong>{data.options.length}</strong> options · <strong>{s.paidByProvider?.ignav ?? s.paidCalls}</strong> Ignav calls used
+          {s.paidByProvider?.aviasales != null && ` · ${s.paidByProvider.aviasales} Aviasales searches`} · {s.cacheHits} from cache
           {s.failedCalls > 0 && ` · ${s.failedCalls} failed`} · {(s.durationMs / 1000).toFixed(1)}s
         </p>
         {asOf && <p>Prices as of {formatLocalTime(asOf, UK_TZ)} UK time (cached up to {settings.cache_ttl_mins / 60}h).</p>}

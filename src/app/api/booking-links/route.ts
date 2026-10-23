@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { getAirportIndex } from "@/lib/airports-index";
 import { createCallContext } from "@/lib/engine/calls";
 import { checkHiddenMarket, type LowerPrice } from "@/lib/engine/hidden-market";
+import { createAviasalesProvider, parseRef } from "@/lib/providers/aviasales";
 import { ignavProvider } from "@/lib/providers/ignav";
+import { clientOf } from "@/lib/client";
 import { getAirlineCountries } from "@/lib/airlines-index";
 import { getStore, type Store } from "@/lib/store";
 import type { BookingKey, Settings } from "@/lib/types";
@@ -38,8 +40,9 @@ async function hiddenMarketsFor(store: Store, key: BookingKey, settings: Setting
 // The UK-market links are returned as-is; another market is checked in parallel and,
 // if it's cheaper, only a GBP price and quote id are returned — never its seller or link.
 export async function POST(request: Request) {
-  const { providerRef, adults, children, infants, bookingKey, priceGbp } = (await request.json().catch(() => ({}))) as {
+  const { providerRef, adults, children, infants, bookingKey, priceGbp, refundable } = (await request.json().catch(() => ({}))) as {
     providerRef?: string;
+    refundable?: boolean;
     adults?: number;
     children?: number;
     infants?: number;
@@ -52,9 +55,12 @@ export async function POST(request: Request) {
   const ctx = createCallContext(store, settings);
   const filters = { adults, children: children ?? 0, infants: infants ?? 0, allowSelfTransfer: false };
 
-  const ukLinks = ignavProvider.getBookingLinks(providerRef, filters, ctx, bookingKey);
+  // Aviasales fares carry their own link token; the lower-price check still looks the flights up on Ignav.
+  const provider = parseRef(providerRef) ? createAviasalesProvider(clientOf(request)) : ignavProvider;
+  const ukLinks = provider.getBookingLinks(providerRef, filters, ctx, bookingKey);
   let lowerPrice: Promise<LowerPrice | null> = Promise.resolve(null);
-  if (bookingKey) {
+  // A refundable fare isn't matched by "same flights, lower price": the cheaper fare may not be refundable.
+  if (bookingKey && !refundable) {
     lowerPrice = hiddenMarketsFor(store, bookingKey, settings).then((markets) =>
       markets.length
         ? checkHiddenMarket({
