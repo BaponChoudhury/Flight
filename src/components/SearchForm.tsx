@@ -34,7 +34,8 @@ export function SearchForm({
   const [locating, setLocating] = useState(false);
   const [locateMsg, setLocateMsg] = useState("");
   const [airports, setAirports] = useState<string[]>([]);
-  const [formError, setFormError] = useState("");
+  // The error remembers the inputs it was about, so it disappears as soon as they change.
+  const [formErrorState, setFormErrorState] = useState({ msg: "", inputs: "" });
   const [more, setMore] = useState(false);
   const [tripType, setTripType] = useState<"oneway" | "return">("oneway");
   const [returnDate, setReturnDate] = useState("");
@@ -77,6 +78,10 @@ export function SearchForm({
       setLocating(false);
     }
   }
+
+  const inputs = JSON.stringify([fromMode, picked.map((a) => a.code), from, dest, airports, tripType, returnDate, req]);
+  const formError = formErrorState.inputs === inputs ? formErrorState.msg : "";
+  const setFormError = (msg: string) => setFormErrorState({ msg, inputs });
 
   const toggle = (code: string, on: boolean) => setAirports((a) => (on ? [...new Set([...a, code])] : a.filter((x) => x !== code)));
   const shown = [...new Set([...(located?.airports.map((a) => a.code) ?? []), ...airports])];

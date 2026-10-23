@@ -55,7 +55,7 @@ All tables have row-level security enabled with no policies, so the public anon 
      Self-transfer itineraries are allowed in this same call (no extra cost). Ignav's ready-made separate-ticket combinations are split where they enter India. They have to meet the same buffer rules there, and also at every change of airline earlier in the trip. They're shown as split tickets whose second flight is "included" in the first price.
    - **B. International legs:** UK airport → each Indian hub that isn't known to lack flights to the destination (`hub_routes`).
 3. **Prune:**
-   - Drop international legs costing more than `prune_factor` (1.5) × the cheapest through ticket.
+   - Drop international legs costing more than `prune_factor` (1.5) × the cheapest through ticket. Each hub's shortest flight is kept anyway if it could still beat the fastest through ticket (its flight time + change time + 1h < the through ticket's), so a pricier but faster split ticket can still show as "Fastest". This can add a domestic search or two per hub.
    - Keep the cheapest `max_intl_per_group` (12) plus the 3 shortest and the 3 earliest-arriving per UK airport/hub pair. This costs no extra calls, because domestic searches are per hub and date.
 4. **Stage 2:**
    - Search hub → destination (up to 1 stop, `domestic_max_stops`) only for hubs with surviving legs.

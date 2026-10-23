@@ -355,9 +355,11 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
     cheapestThroughGbp: cheapestThrough,
     factor: s.prune_factor,
     maxPerGroup: s.max_intl_per_group,
+    fastestThroughMins: through.length ? Math.min(...through.map((t) => t.out.durationMins)) : null,
+    minBufferMins: minBuffer,
   });
   if (pruned.droppedTooExpensive)
-    notes.push(`${pruned.droppedTooExpensive} international flights dropped: over ${s.prune_factor}× the cheapest through ticket.`);
+    notes.push(`${pruned.droppedTooExpensive} international flights dropped: over ${s.prune_factor}× the cheapest through ticket; each hub's fastest flight is kept if it could beat the fastest through ticket.`);
 
   // ----- Stage 2: domestic legs for surviving hubs -----
   const byHub = new Map<string, Candidate[]>();

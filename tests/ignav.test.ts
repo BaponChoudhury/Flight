@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultConfig } from "@/lib/config/defaults";
 import { normaliseOneWay, type IgnavFareSearchResponse } from "@/lib/providers/ignav";
 
@@ -125,5 +125,52 @@ describe("booking links", () => {
     expect(bookingMatchesKey(resp("134"), key)).toBe(true);
     expect(bookingMatchesKey(resp("130"), key)).toBe(false);
     expect(bookingMatchesKey(resp("130"), { ...key, flights: undefined })).toBe(true); // older keys can't be checked
+  });
+
+  describe("retries", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+      vi.useRealTimers();
+    });
+
+    // Runs one real ignavPost (fetch stubbed) through a pass-through call context.
+    async function searchWith(statuses: number[]) {
+      const { ignavProvider } = await import("@/lib/providers/ignav");
+      vi.stubEnv("IGNAV_API_KEY", "test");
+      vi.useFakeTimers();
+      const fetchMock = vi.fn(async () => {
+        const status = statuses.shift() ?? 200;
+        const body = status === 200 ? { ...raw, itineraries: [] } : { error: { message: "Unable to complete request." } };
+        return new Response(JSON.stringify(body), { status });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const ctx = { settings: defaultConfig().settings, log: [], call: async (req: { fetcher: () => Promise<unknown> }) => ({ raw: await req.fetcher(), fetchedAt: "x", fromCache: false }) };
+      const filters = { adults: 1, children: 0, infants: 0, allowSelfTransfer: false };
+      const result = ignavProvider.searchOneWay("MAN", "GAU", "2026-11-22", filters, ctx as never).then(
+        (v) => ({ ok: true as const, v }),
+        (e: Error) => ({ ok: false as const, e }),
+      );
+      await vi.runAllTimersAsync();
+      return { result: await result, calls: fetchMock.mock.calls.length };
+    }
+
+    it("retries a 424 once and uses the second answer", async () => {
+      const { result, calls } = await searchWith([424, 200]);
+      expect(result.ok).toBe(true);
+      expect(calls).toBe(2);
+    });
+
+    it("gives up after one retry", async () => {
+      const { result, calls } = await searchWith([424, 424, 200]);
+      expect(result.ok).toBe(false);
+      expect(calls).toBe(2);
+    });
+
+    it("doesn't retry a request Ignav rejected as invalid", async () => {
+      const { result, calls } = await searchWith([422, 200]);
+      expect(result.ok).toBe(false);
+      expect(calls).toBe(1);
+    });
   });
 });

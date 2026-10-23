@@ -12,7 +12,17 @@ export interface PruneOptions {
    * 3 earliest-arriving. Costs no extra calls: domestic searches are per hub/date.
    */
   maxPerGroup: number;
+  /**
+   * Shortest through ticket (minutes, departure to arrival) and the change time at the hub.
+   * Each hub's shortest flight that could still beat it is kept whatever its price, so a
+   * pricier but faster split ticket can still be the "Fastest" result.
+   */
+  fastestThroughMins?: number | null;
+  minBufferMins?: number;
 }
+
+/** Shortest plausible domestic hop to add when judging whether a split ticket could be faster. */
+const MIN_DOMESTIC_MINS = 60;
 
 export interface PruneResult {
   kept: NormalisedItinerary[];
@@ -22,7 +32,18 @@ export interface PruneResult {
 
 export function pruneInternational(intl: NormalisedItinerary[], opts: PruneOptions): PruneResult {
   const limit = opts.cheapestThroughGbp != null ? opts.cheapestThroughGbp * opts.factor : Infinity;
-  const affordable = intl.filter((i) => i.price.totalGbp <= limit);
+  const couldBeFastest = new Set<NormalisedItinerary>();
+  if (opts.fastestThroughMins != null) {
+    const shortestPerGroup = new Map<string, NormalisedItinerary>();
+    for (const i of intl) {
+      const k = `${i.origin}|${i.dest}`;
+      const best = shortestPerGroup.get(k);
+      if (!best || i.durationMins < best.durationMins) shortestPerGroup.set(k, i);
+    }
+    for (const i of shortestPerGroup.values())
+      if (i.durationMins + (opts.minBufferMins ?? 0) + MIN_DOMESTIC_MINS < opts.fastestThroughMins) couldBeFastest.add(i);
+  }
+  const affordable = intl.filter((i) => i.price.totalGbp <= limit || couldBeFastest.has(i));
   const droppedTooExpensive = intl.length - affordable.length;
 
   const groups = new Map<string, NormalisedItinerary[]>();
