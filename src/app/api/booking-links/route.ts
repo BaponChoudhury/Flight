@@ -3,23 +3,35 @@ import { getAirportIndex } from "@/lib/airports-index";
 import { createCallContext } from "@/lib/engine/calls";
 import { checkHiddenMarket, type LowerPrice } from "@/lib/engine/hidden-market";
 import { ignavProvider } from "@/lib/providers/ignav";
+import { getAirlineCountries } from "@/lib/airlines-index";
 import { getStore, type Store } from "@/lib/store";
-import type { BookingKey } from "@/lib/types";
+import type { BookingKey, Settings } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-/** Market to check behind the scenes: the destination's country (or the origin's on the way home). */
-async function hiddenMarketFor(store: Store, key: BookingKey, home: string): Promise<string | null> {
+/**
+ * Markets to check behind the scenes: the destination's country (the origin's on the way
+ * home) and the home country of each airline on the trip, e.g. Bahrain for Gulf Air.
+ */
+async function hiddenMarketsFor(store: Store, key: BookingKey, settings: Settings): Promise<string[]> {
+  const home = settings.market;
+  const markets: string[] = [];
   try {
     const index = await getAirportIndex(store);
     const country = (code: string) => index.find((a) => a.code === code)?.country ?? null;
     const dest = country(key.dest);
-    const market = dest && dest !== home ? dest : country(key.origin);
-    return market && market !== home ? market : null;
+    const place = dest && dest !== home ? dest : country(key.origin);
+    if (place) markets.push(place);
   } catch {
-    return null;
+    /* airport list unavailable: airline markets only */
   }
+  const carriers = [...new Set((key.flights ?? [key.carrier ?? ""]).map((f) => f.slice(0, 2)).filter(Boolean))];
+  if (carriers.length) {
+    const airlineCountry = { ...(await getAirlineCountries(store)), ...settings.airline_country_overrides };
+    for (const c of carriers) if (airlineCountry[c]) markets.push(airlineCountry[c]);
+  }
+  return [...new Set(markets.filter((m) => m !== home))].slice(0, settings.hidden_markets_max);
 }
 
 // Fetched lazily, only when the user taps "Get booking links" (each call is billed).
@@ -43,8 +55,8 @@ export async function POST(request: Request) {
   const ukLinks = ignavProvider.getBookingLinks(providerRef, filters, ctx, bookingKey);
   let lowerPrice: Promise<LowerPrice | null> = Promise.resolve(null);
   if (bookingKey) {
-    lowerPrice = hiddenMarketFor(store, bookingKey, settings.market).then((market) =>
-      market
+    lowerPrice = hiddenMarketsFor(store, bookingKey, settings).then((markets) =>
+      markets.length
         ? checkHiddenMarket({
             provider: ignavProvider,
             ctx,
@@ -52,7 +64,7 @@ export async function POST(request: Request) {
             settings,
             key: bookingKey,
             filters,
-            market,
+            markets,
             ukLinks,
             ukSearchPriceGbp: typeof priceGbp === "number" && Number.isFinite(priceGbp) && priceGbp > 0 ? priceGbp : null,
           }).catch((err) => {

@@ -108,6 +108,22 @@ describe("booking links", () => {
 
   it("records the flight details on normalised itineraries", () => {
     const [it0] = normaliseOneWay(raw, { fetchedAt: "x", fromCache: false, passengers: 2 }, defaultConfig().settings).itineraries;
-    expect(it0.bookingKey).toEqual({ origin: "MAN", dest: "AUH", date: "2026-12-10", carrier: "EY", flightNumber: "16" });
+    expect(it0.bookingKey).toEqual({ origin: "MAN", dest: "AUH", date: "2026-12-10", carrier: "EY", flightNumber: "16", flights: ["EY16"] });
+  });
+
+  it("rejects a lookup that came back with a different connection (GF8+GF130 instead of GF8+GF134)", async () => {
+    const { bookingMatchesKey } = await import("@/lib/providers/ignav");
+    const seg = (n: string, from: string, to: string) => ({
+      marketing_carrier_code: "GF", flight_number: n, operating_carrier_name: "Gulf Air", departure_airport: from, departure_time_local: "2027-01-20T10:35:00",
+      departure_timezone: null, departure_time_utc: null, arrival_airport: to, arrival_time_local: "2027-01-20T20:00:00", arrival_timezone: null, arrival_time_utc: null, duration_minutes: 1, aircraft: null,
+    });
+    const resp = (second: string) => ({
+      itinerary: { price: { amount: 1, currency: "GBP", status: "verified" as const }, outbound: { carrier: "Gulf Air", duration_minutes: 1, segments: [seg("8", "LGW", "BAH"), seg(second, "BAH", "DEL")] } },
+      booking_options: [],
+    });
+    const key = { origin: "LGW", dest: "DEL", date: "2027-01-20", carrier: "GF", flightNumber: "8", flights: ["GF8", "GF134"] };
+    expect(bookingMatchesKey(resp("134"), key)).toBe(true);
+    expect(bookingMatchesKey(resp("130"), key)).toBe(false);
+    expect(bookingMatchesKey(resp("130"), { ...key, flights: undefined })).toBe(true); // older keys can't be checked
   });
 });

@@ -101,6 +101,8 @@ export const DEFAULT_SETTINGS: Settings = {
   fx_margin_pct: 0.4,
   hidden_market_min_saving_gbp: 5,
   quote_ttl_mins: 30,
+  airline_country_overrides: { QP: "IN" }, // OpenFlights still lists QP as Air Kenya; it's Akasa Air (India)
+  hidden_markets_max: 2,
 };
 
 export function defaultConfig(): AppConfig {

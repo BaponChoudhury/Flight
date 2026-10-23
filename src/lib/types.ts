@@ -86,6 +86,8 @@ export interface Settings {
   fx_margin_pct: number; // taken off the mid-market rate when converting foreign-market prices
   hidden_market_min_saving_gbp: number; // only offer a foreign-market price that beats the UK by at least this
   quote_ttl_mins: number;
+  airline_country_overrides: Record<string, string>; // fixes for the open airline list, e.g. { QP: "IN" }
+  hidden_markets_max: number; // foreign markets checked per tap (destination + airline home)
 }
 
 export interface AppConfig {
@@ -151,7 +153,9 @@ export interface BookingKey {
   date: string; // local departure date
   carrier: string | null; // first flight's marketing carrier
   flightNumber: string | null;
-  ret?: { date: string; carrier: string | null; flightNumber: string | null };
+  /** Every flight of the leg ("GF8", "GF134"): lookups by flight details only send the first, so results are checked against this. */
+  flights?: string[];
+  ret?: { date: string; carrier: string | null; flightNumber: string | null; flights?: string[] };
 }
 
 /** A return fare: `out` carries the whole price, `back` has price 0 (included). Same providerRef. */

@@ -172,7 +172,26 @@ function keyOf(leg: S["LegModel"]): BookingKey {
     date: first.departure_time_local.slice(0, 10),
     carrier: first.marketing_carrier_code,
     flightNumber: first.flight_number,
+    flights: legFlights(leg),
   };
+}
+
+function legFlights(leg: S["LegModel"]): string[] {
+  return leg.segments.map((s) => `${s.marketing_carrier_code ?? ""}${s.flight_number ?? ""}`);
+}
+
+/**
+ * Ignav finds an itinerary by its FIRST flight only, so e.g. "GF8" can come back as
+ * GF8+GF130 when we meant GF8+GF134. Only accept a response whose flights all match.
+ */
+export function bookingMatchesKey(raw: IgnavBookingLinksResponse, key: BookingKey): boolean {
+  if (!key.flights?.length) return true; // older keys without the full list: can't check
+  const it = raw.itinerary as Partial<S["BookingItineraryModel"] & S["SearchBookingItineraryModel"]>;
+  const legs = it.outbound ? [it.outbound, it.inbound ?? null] : (it.legs ?? []);
+  const same = (a: string[] | undefined, b: string[] | undefined) => !!a && !!b && a.length === b.length && a.every((x, i) => x === b[i]);
+  if (!legs[0] || !same(legFlights(legs[0]), key.flights)) return false;
+  if (key.ret?.flights) return !!legs[1] && same(legFlights(legs[1]), key.ret.flights);
+  return true;
 }
 
 export function normaliseOneWay(
@@ -206,7 +225,7 @@ export function normaliseRoundTrip(
       const out = normaliseLeg(it, it.outbound, true, raw, meta, settings);
       const back = normaliseLeg(it, it.inbound, false, raw, meta, settings);
       const r = keyOf(it.inbound);
-      out.bookingKey = { ...out.bookingKey!, ret: { date: r.date, carrier: r.carrier, flightNumber: r.flightNumber } };
+      out.bookingKey = { ...out.bookingKey!, ret: { date: r.date, carrier: r.carrier, flightNumber: r.flightNumber, flights: r.flights } };
       trips.push({ out, back });
     } catch {
       skipped++;
@@ -292,11 +311,13 @@ export const ignavProvider: FlightProvider = {
       label: `booking links [${market}] ${key.origin}-${key.dest} ${key.carrier}${key.flightNumber}`,
       fetcher: () => ignavPost<IgnavBookingLinksResponse>("/api/fares/booking-links", body),
     });
-    return normaliseBookingLinks(res.raw as IgnavBookingLinksResponse);
+    const raw = res.raw as IgnavBookingLinksResponse;
+    if (!bookingMatchesKey(raw, key)) return []; // a different connection: not comparable
+    return normaliseBookingLinks(raw);
   },
 
   async getBookingLinks(providerRef, filters, ctx, key) {
-    const fetchLinks = async (body: IgnavBookingLinksRequest, label: string) => {
+    const fetchLinks = async (body: IgnavBookingLinksRequest, label: string, mustMatch?: BookingKey) => {
       const res = await ctx.call({
         provider: "ignav",
         endpoint: "/api/fares/booking-links",
@@ -304,7 +325,10 @@ export const ignavProvider: FlightProvider = {
         label,
         fetcher: () => ignavPost<IgnavBookingLinksResponse>("/api/fares/booking-links", body),
       });
-      return normaliseBookingLinks(res.raw as IgnavBookingLinksResponse);
+      const raw = res.raw as IgnavBookingLinksResponse;
+      // Don't send people to book a different connection than the one shown.
+      if (mustMatch && !bookingMatchesKey(raw, mustMatch)) return [];
+      return normaliseBookingLinks(raw);
     };
     try {
       // An ignav_id already encodes passengers and market; Ignav rejects those fields alongside it.
@@ -312,7 +336,7 @@ export const ignavProvider: FlightProvider = {
     } catch (err) {
       // ignav_ids expire; our results can be cached for up to 2h. Look the trip up by its flights instead.
       if (!key || !(err instanceof ProviderError) || !(err.httpStatus === 404 || /no itinerary matched/i.test(err.message))) throw err;
-      return fetchLinks(bookingKeyRequest(key, filters, ctx.settings), `booking links ${key.origin}-${key.dest} ${key.carrier}${key.flightNumber}`);
+      return fetchLinks(bookingKeyRequest(key, filters, ctx.settings), `booking links ${key.origin}-${key.dest} ${key.carrier}${key.flightNumber}`, key);
     }
   },
 };

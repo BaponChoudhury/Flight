@@ -7,7 +7,7 @@ import type { FlightProvider } from "@/lib/providers/types";
 import { createMemoryStore } from "@/lib/store";
 import type { BookingLink } from "@/lib/types";
 
-const FX: GbpRates = { rates: { GBP: 1, INR: 126.5, AED: 4.89 }, fetchedAt: new Date().toISOString(), source: "test" };
+const FX: GbpRates = { rates: { GBP: 1, INR: 126.5, AED: 4.89, BHD: 0.505 }, fetchedAt: new Date().toISOString(), source: "test" };
 const link = (provider: string, amount: number, currency: string, fareName: string | null = null): BookingLink => ({
   providerName: provider,
   providerType: "third_party",
@@ -19,7 +19,7 @@ const link = (provider: string, amount: number, currency: string, fareName: stri
 const key = { origin: "LHR", dest: "DEL", date: "2026-12-10", carrier: "MS", flightNumber: "784" };
 const filters = { adults: 1, children: 0, infants: 0, allowSelfTransfer: false };
 
-function provider(foreign: BookingLink[]): FlightProvider & { markets: string[] } {
+function provider(foreign: BookingLink[] | Record<string, BookingLink[]>): FlightProvider & { markets: string[] } {
   const markets: string[] = [];
   return {
     id: "ignav",
@@ -29,7 +29,7 @@ function provider(foreign: BookingLink[]): FlightProvider & { markets: string[] 
     getBookingLinks: async () => [],
     getMarketBookingLinks: async (_k, _f, _c, market) => {
       markets.push(market);
-      return foreign;
+      return Array.isArray(foreign) ? foreign : (foreign[market] ?? []);
     },
   };
 }
@@ -61,7 +61,11 @@ describe("FX margin", () => {
 describe("hidden market check", () => {
   const settings = defaultConfig().settings;
 
-  async function run(foreign: BookingLink[], ukLinks: BookingLink[], opts: { fx?: GbpRates | null; ukSearch?: number | null } = {}) {
+  async function run(
+    foreign: BookingLink[] | Record<string, BookingLink[]>,
+    ukLinks: BookingLink[],
+    opts: { fx?: GbpRates | null; ukSearch?: number | null; markets?: string[] } = {},
+  ) {
     const store = createMemoryStore();
     const p = provider(foreign);
     const result = await checkHiddenMarket({
@@ -71,7 +75,7 @@ describe("hidden market check", () => {
       settings,
       key,
       filters,
-      market: "IN",
+      markets: opts.markets ?? ["IN"],
       ukLinks,
       ukSearchPriceGbp: opts.ukSearch ?? null,
       fetchFx: async () => {
@@ -111,5 +115,35 @@ describe("hidden market check", () => {
     const { result, p } = await run([link("FlightHub", 77400, "INR")], [link("Omio", 723, "GBP")], { fx: null });
     expect(result).toBeNull();
     expect(p.markets).toEqual([]); // and doesn't spend an Ignav call
+  });
+
+  it("checks the airline's home market too and keeps the cheapest (Gulf Air via Bahrain)", async () => {
+    const { result, store, p } = await run(
+      { IN: [link("lastminute.com", 52000, "INR")], BH: [link("FlightHub", 163, "BHD")] }, // ≈ £412.75 vs ≈ £324.07
+      [link("lastminute.com", 401, "GBP")],
+      { markets: ["IN", "BH"] },
+    );
+    expect(p.markets.sort()).toEqual(["BH", "IN"]);
+    expect(result).toMatchObject({ priceGbp: 324.07, ukPriceGbp: 401, savingGbp: 76.93 });
+    expect((await store.getQuote(result!.quoteId))!.market).toBe("BH");
+  });
+
+  it("ignores the UK market and duplicates in the list", async () => {
+    const { p } = await run([link("FlightHub", 77400, "INR")], [link("Omio", 723, "GBP")], { markets: ["GB", "IN", "IN"] });
+    expect(p.markets).toEqual(["IN"]);
+  });
+});
+
+describe("airline home countries", () => {
+  it("maps airline codes to countries from the open lists", async () => {
+    const { buildAirlineCountries } = await import("@/lib/airlines-index");
+    const dat = [
+      '1,"Gulf Air Bahrain",\\N,"GF","GFA","GULF AIR","Bahrain","Y"',
+      '2,"Lufthansa Cargo",\\N,"LH","GEC","LUFTHANSA CARGO","Germany","Y"',
+      '3,"Lufthansa",\\N,"LH","DLH","LUFTHANSA","Germany","Y"',
+      '4,"Old Airline",\\N,"ZZ","ZZZ","OLD","Bahrain","N"',
+    ].join("\n");
+    const countries = '"id","code","name"\n1,"BH","Bahrain"\n2,"DE","Germany"';
+    expect(buildAirlineCountries(dat, countries)).toEqual({ GF: "BH", LH: "DE" });
   });
 });

@@ -120,7 +120,10 @@ There's no free API for live UK train or coach prices, or for taxi quotes (Train
 
 Ignav's `market` setting changes which sellers appear for the same flights, and sometimes their prices. For example, London → Delhi on EgyptAir was £723 from the only UK seller, and ≈ £612 from India-market sellers on the same day.
 
-- **When it runs:** when someone taps **Get booking links**, the server fetches the UK links as usual. In parallel (+1 Ignav call) it looks up the same flights in the **destination country's market** (the origin's on the way home).
+- **When it runs:** when someone taps **Get booking links**, the server fetches the UK links as usual. In parallel it looks up the same flights in up to `hidden_markets_max` (2) other markets, about +2 Ignav calls:
+  - the **destination country's market** (the origin's on the way home);
+  - the **airline's home market**, e.g. Bahrain for Gulf Air. Airline home countries come from the free [OpenFlights](https://github.com/jpatokal/openflights) airline list, cached for 30 days, with fixes in `airline_country_overrides` (e.g. `QP → IN`, Akasa Air).
+- **Exact trips only:** Ignav finds an itinerary by its **first flight** only, so "GF8" can return GF8+GF130 when we meant GF8+GF134. Every response is checked against the full list of flights and discarded if it differs. The same check protects the normal booking-link fallback when an itinerary ID has expired.
 - **Conversion:** foreign prices are converted at the **mid-market rate minus `fx_margin_pct` (0.4%)**, rounded up to the penny. Rates come from open.er-api.com (free, mid-market, daily) and are cached for 6 hours. **If live rates can't be fetched, no foreign price is offered.**
 - **When a price is offered:** only if it beats the cheapest UK price by at least `hidden_market_min_saving_gbp` (£5). The UK search price is used when UK links carry no price.
 - **What the customer sees:** only "Lower price found: £X" and a **Request this fare** form (name, email, phone). The seller, market, local price and link are stored server-side in `fare_quotes` (valid for `quote_ttl_mins`, 30 min) and are never sent to the browser.

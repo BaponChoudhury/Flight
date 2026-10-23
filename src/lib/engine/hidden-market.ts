@@ -25,7 +25,8 @@ export interface HiddenMarketArgs {
   settings: Settings;
   key: BookingKey;
   filters: SearchFilters;
-  market: string;
+  /** Foreign markets to check, e.g. the destination's and the airline's home country. */
+  markets: string[];
   /** UK-market links for the same itinerary (may still be in flight; a failure counts as none). */
   ukLinks: BookingLink[] | Promise<BookingLink[]>;
   /** The itinerary's UK search price (whole party), used when no UK link carries a price. */
@@ -41,22 +42,28 @@ export function cheapestUkGbp(links: BookingLink[]): number | null {
 }
 
 export async function checkHiddenMarket(a: HiddenMarketArgs): Promise<LowerPrice | null> {
-  if (a.market === a.settings.market) return null;
+  const markets = [...new Set(a.markets.filter((m) => m && m !== a.settings.market))];
+  if (!markets.length) return null;
   const fx = await getGbpRates(a.store, a.fetchFx);
   if (!fx) return null; // never quote foreign prices on stale or missing rates
 
-  let foreign: BookingLink[];
-  try {
-    foreign = await a.provider.getMarketBookingLinks(a.key, a.filters, a.ctx, a.market);
-  } catch (err) {
-    console.warn(`hidden market ${a.market} lookup failed: ${(err as Error).message}`);
-    return null;
-  }
+  const results = await Promise.all(
+    markets.map(async (market) => {
+      try {
+        return { market, links: await a.provider.getMarketBookingLinks(a.key, a.filters, a.ctx, market) };
+      } catch (err) {
+        console.warn(`hidden market ${market} lookup failed: ${(err as Error).message}`);
+        return { market, links: [] as BookingLink[] };
+      }
+    }),
+  );
 
-  let best: { link: BookingLink; gbp: number } | null = null;
-  for (const link of foreign.filter(priced)) {
-    const gbp = toGbpWithMargin(link.price!.amount, link.price!.currency, fx, a.settings.fx_margin_pct);
-    if (gbp != null && (!best || gbp < best.gbp)) best = { link, gbp };
+  let best: { link: BookingLink; gbp: number; market: string } | null = null;
+  for (const { market, links } of results) {
+    for (const link of links.filter(priced)) {
+      const gbp = toGbpWithMargin(link.price!.amount, link.price!.currency, fx, a.settings.fx_margin_pct);
+      if (gbp != null && (!best || gbp < best.gbp)) best = { link, gbp, market };
+    }
   }
   if (!best) return null;
 
@@ -72,7 +79,7 @@ export async function checkHiddenMarket(a: HiddenMarketArgs): Promise<LowerPrice
     id: quoteId,
     created_at: new Date().toISOString(),
     expires_at: expiresAt,
-    market: a.market,
+    market: best.market,
     provider_name: best.link.providerName,
     booking_url: best.link.url,
     fare_name: best.link.fareName,
