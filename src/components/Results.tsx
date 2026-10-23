@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { applyGround, groundChoices, pickGround, rankOptions, type GroundChoice } from "@/lib/engine/rules";
 import { formatDuration, formatLocalDay, formatLocalTime } from "@/lib/engine/time";
-import type { Badge, BookingLink, FareTerms, FlightLeg, RouteOption, SearchRequest, SearchResponse, Settings } from "@/lib/types";
+import type { Badge, BookingLink, FareTerms, FlightLeg, ProviderId, RouteOption, SearchRequest, SearchResponse, Settings } from "@/lib/types";
 import { EMPTY_DRAFT, GroundPanel, toInput, type GroundDraft } from "./GroundPanel";
 
 const gbp2 = (n: number) => `£${n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -28,6 +28,17 @@ function fareTermsText(t: FareTerms): string | null {
   if (t.changeable === true) parts.push("date changes allowed");
   else if (t.changeable === false) parts.push("no date changes");
   return parts.length ? parts.join(" · ") : null;
+}
+
+// TESTING ONLY: shows which fare source (Ignav / Aviasales) each result came from.
+// Set to false before real users see the site.
+const SHOW_SOURCE_TAGS = true;
+const SOURCE_NAME: Record<ProviderId, string> = { ignav: "Ignav", aviasales: "Aviasales", duffel: "Duffel" };
+
+function SourceTag({ providers }: { providers: ProviderId[] }) {
+  if (!SHOW_SOURCE_TAGS || !providers.length) return null;
+  const names = [...new Set(providers)].map((p) => SOURCE_NAME[p] ?? p).join(" + ");
+  return <span className="rounded-full border border-dashed border-slate-400 px-2 py-0.5 text-xs font-medium text-slate-600 dark:text-slate-300">via {names}</span>;
 }
 
 type Tz = Record<string, string>;
@@ -77,7 +88,7 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
   return (
     <li className="relative border-l-2 border-sky-600 pl-4">
       <p className="font-semibold">
-        ✈ {it.origin} {when(it.departUtc, tz[it.origin] ?? UK_TZ)} → {it.dest} {when(it.arriveUtc, tz[it.dest] ?? UK_TZ)}
+        ✈ {it.origin} {when(it.departUtc, tz[it.origin] ?? UK_TZ)} → {it.dest} {when(it.arriveUtc, tz[it.dest] ?? UK_TZ)} <SourceTag providers={[it.provider]} />
       </p>
       <p className="text-sm text-slate-600 dark:text-slate-400">
         {airline} · {flights} · {formatDuration(it.durationMins)} · {via.length ? `stops in ${via.join(", ")}` : "direct"}
@@ -253,9 +264,10 @@ function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz:
             Back: leave {o.dest} {when(o.back.leaveDestUtc, destTz)} · home {when(o.back.arriveHomeUtc, backHomeTz)}
           </p>
         )}
-        {o.badges.length > 0 && (
+        {(o.badges.length > 0 || SHOW_SOURCE_TAGS) && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {o.badges.map((b) => <span key={b} className={`rounded-full px-2 py-0.5 text-xs font-medium ${BADGE_STYLE[b]}`}>{b}</span>)}
+            <SourceTag providers={[...o.legs, ...(o.back?.legs ?? [])].map((l) => l.itinerary.provider)} />
           </div>
         )}
         <p className="mt-2 text-sm font-medium text-sky-700 dark:text-sky-400">{open ? "Hide details" : "Show details"}</p>
