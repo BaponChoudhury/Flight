@@ -6,6 +6,7 @@ import { formatDuration, formatLocalDay, formatLocalTime } from "@/lib/engine/ti
 import type { Badge, BookingLink, FlightLeg, RouteOption, SearchRequest, SearchResponse, Settings } from "@/lib/types";
 import { EMPTY_DRAFT, GroundPanel, toInput, type GroundDraft } from "./GroundPanel";
 
+const gbp2 = (n: number) => `£${n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const gbp = (n: number) => `£${n.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`;
 
 const BADGE_STYLE: Record<Badge, string> = {
@@ -147,9 +148,12 @@ function LowerPriceOffer({ offer, req }: { offer: LowerPriceView; req: SearchReq
   return (
     <div className="mt-2 rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm dark:border-emerald-800 dark:bg-emerald-900/30">
       <p className="font-semibold text-emerald-900 dark:text-emerald-100">
-        Lower price found: {gbp(offer.priceGbp)} for {travellers(req)}
-        {offer.savingGbp != null && ` — save ${gbp(offer.savingGbp)}`}
+        We can book this for {gbp2(offer.priceGbp)} for {travellers(req)}
+        {offer.savingGbp != null && ` — save ${gbp2(offer.savingGbp)}`}
       </p>
+      {offer.ukPriceGbp != null && (
+        <p className="text-emerald-900/80 dark:text-emerald-100/80">UK booking sites currently charge {gbp2(offer.ukPriceGbp)} for these flights.</p>
+      )}
       <p className="text-emerald-900/80 dark:text-emerald-100/80">
         Same flights{offer.fareName ? ` (${offer.fareName})` : ""}. We book this fare for you. Price held until {until}; we confirm it with you before taking any payment.
       </p>
