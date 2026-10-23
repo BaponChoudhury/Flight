@@ -125,7 +125,7 @@ function ConnectionStep({ c }: { c: NonNullable<RouteOption["connection"]> }) {
 
 const legsOf = (o: RouteOption) => (o.back ? [...o.legs, ...o.back.legs] : o.legs);
 
-const modeLabel = (m: string) => (m === "train" ? "Train" : m === "cab" ? "Cab" : m);
+const modeLabel = (m: string) => ({ train: "Train", coach: "Coach", cab: "Cab" })[m] ?? m;
 
 function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz: Tz; req: SearchRequest; highlight?: string; groundAlts: GroundChoice[] }) {
   const other = groundAlts.find((g) => g.mode !== o.ground.mode);
@@ -252,7 +252,8 @@ function initialDrafts(data: SearchResponse, req: SearchRequest): Record<string,
   } catch {
     /* storage unavailable */
   }
-  const drafts: Record<string, GroundDraft> = { ...saved };
+  // Older saved drafts predate some fields (e.g. coach); fill them in.
+  const drafts: Record<string, GroundDraft> = Object.fromEntries(Object.entries(saved).map(([a, d]) => [a, { ...EMPTY_DRAFT, ...d }]));
   for (const o of data.options) {
     const g = o.ground;
     if (drafts[o.ukAirport] || g.mode === "not set") continue;

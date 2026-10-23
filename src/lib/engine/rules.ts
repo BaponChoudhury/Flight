@@ -197,12 +197,14 @@ export function rankOptions<T extends Scored>(options: T[], priceWeight: number,
 
 // ---------- User-entered ground travel (applied on the results page) ----------
 
-export type GroundMode = "train" | "cab";
+export type GroundMode = "train" | "coach" | "cab";
 
 /** What the user typed for one UK airport. Blank fields are null. */
 export interface GroundInput {
   trainPerPerson: number | null;
   trainMins: number | null;
+  coachPerPerson: number | null;
+  coachMins: number | null;
   cabTotal: number | null; // whole car
   cabMins: number | null;
   use: "cheapest" | GroundMode;
@@ -219,6 +221,8 @@ export function groundChoices(input: GroundInput, pax: number): GroundChoice[] {
   const out: GroundChoice[] = [];
   if (input.trainPerPerson != null && input.trainMins != null)
     out.push({ mode: "train", costGbp: input.trainPerPerson * pax, mins: input.trainMins, detail: `${pax} × £${input.trainPerPerson}` });
+  if (input.coachPerPerson != null && input.coachMins != null)
+    out.push({ mode: "coach", costGbp: input.coachPerPerson * pax, mins: input.coachMins, detail: `${pax} × £${input.coachPerPerson}` });
   if (input.cabTotal != null && input.cabMins != null)
     out.push({ mode: "cab", costGbp: input.cabTotal, mins: input.cabMins, detail: "whole car" });
   return out;

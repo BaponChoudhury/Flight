@@ -99,14 +99,21 @@ describe("cost aggregation", () => {
 });
 
 describe("user-entered ground travel", () => {
-  const input = { trainPerPerson: 20, trainMins: 80, cabTotal: 95, cabMins: 65, use: "cheapest" as const };
+  const input = { trainPerPerson: 20, trainMins: 80, coachPerPerson: null, coachMins: null, cabTotal: 95, cabMins: 65, use: "cheapest" as const };
 
   it("prices train per person and cab per car, and picks the cheaper for the party", () => {
     expect(pickGround(input, 2)).toMatchObject({ mode: "train", costGbp: 40, mins: 80 });
     expect(pickGround(input, 5)).toMatchObject({ mode: "cab", costGbp: 95 }); // 5 × £20 = £100 > £95
     expect(pickGround({ ...input, use: "cab" }, 2)).toMatchObject({ mode: "cab" });
     expect(pickGround({ ...input, cabTotal: null, use: "cab" }, 2)).toBeNull();
-    expect(pickGround({ trainPerPerson: null, trainMins: null, cabTotal: null, cabMins: null, use: "cheapest" }, 2)).toBeNull();
+    expect(pickGround({ trainPerPerson: null, trainMins: null, coachPerPerson: null, coachMins: null, cabTotal: null, cabMins: null, use: "cheapest" }, 2)).toBeNull();
+  });
+
+  it("prices coach per person and can pick it", () => {
+    const withCoach = { ...input, coachPerPerson: 12, coachMins: 140 };
+    expect(pickGround(withCoach, 2)).toMatchObject({ mode: "coach", costGbp: 24, mins: 140 });
+    expect(pickGround({ ...withCoach, use: "train" }, 2)).toMatchObject({ mode: "train" });
+    expect(pickGround({ ...withCoach, use: "coach" }, 5)).toMatchObject({ mode: "coach", costGbp: 60 });
   });
 
   it("re-prices an option and moves the leave-home time", async () => {
