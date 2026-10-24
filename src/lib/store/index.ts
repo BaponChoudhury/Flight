@@ -55,6 +55,22 @@ export interface FareQuote {
   itinerary: unknown;
 }
 
+/** An Aviasales booking link given to a user, tagged with its own Travelpayouts SubID. */
+export interface BookingClick {
+  sub_id: string;
+  created_at: string;
+  provider: string;
+  seller: string | null;
+  search_id: string | null;
+  origin: string | null;
+  dest: string | null;
+  depart_date: string | null;
+  return_date: string | null;
+  flights: string | null;
+  price_gbp: number | null;
+  passengers: { adults: number; children: number; infants: number };
+}
+
 export interface FareRequest {
   id: string;
   quote_id: string;
@@ -79,6 +95,8 @@ export interface Store {
   getQuote(id: string): Promise<FareQuote | null>;
   createFareRequest(r: FareRequest): Promise<void>;
   listFareRequests(limit?: number): Promise<(FareRequest & { quote: FareQuote | null })[]>;
+  logBookingClick(c: BookingClick): Promise<void>;
+  listBookingClicks(limit?: number): Promise<BookingClick[]>;
   putCache(row: CacheRow): Promise<void>;
   logSearch(search: SearchLog, calls: CallLogEntry[]): Promise<void>;
 }
@@ -110,6 +128,7 @@ class MemoryStore implements Store {
   private kv = new Map<string, { value: unknown; updated_at: string }>();
   private quotes = new Map<string, FareQuote>();
   private requests: FareRequest[] = [];
+  private clicks: BookingClick[] = [];
 
   async saveQuote(q: FareQuote) {
     this.quotes.set(q.id, structuredClone(q));
@@ -125,6 +144,13 @@ class MemoryStore implements Store {
       .reverse()
       .slice(0, limit)
       .map((r) => ({ ...structuredClone(r), quote: structuredClone(this.quotes.get(r.quote_id) ?? null) }));
+  }
+
+  async logBookingClick(c: BookingClick) {
+    this.clicks.push(structuredClone(c));
+  }
+  async listBookingClicks(limit = 200) {
+    return structuredClone([...this.clicks].reverse().slice(0, limit));
   }
 
   async getKv<T>(key: string) {
@@ -258,6 +284,17 @@ class SupabaseStore implements Store {
       .limit(limit);
     if (error) throw new Error(`fare_requests read failed: ${error.message}`);
     return (data ?? []).map((r) => ({ ...(r as FareRequest), quote: r.quote ? normaliseQuote(r.quote) : null }));
+  }
+
+  async logBookingClick(c: BookingClick) {
+    const { error } = await this.db.from("booking_clicks").insert(c);
+    if (error) throw new Error(`booking_clicks insert failed (run supabase/migrations/0005_booking_clicks.sql?): ${error.message}`);
+  }
+
+  async listBookingClicks(limit = 200) {
+    const { data, error } = await this.db.from("booking_clicks").select("*").order("created_at", { ascending: false }).limit(limit);
+    if (error) throw new Error(`booking_clicks read failed (run supabase/migrations/0005_booking_clicks.sql?): ${error.message}`);
+    return (data ?? []).map((r) => ({ ...(r as BookingClick), price_gbp: r.price_gbp == null ? null : Number(r.price_gbp) }));
   }
 
   async getKv<T>(key: string) {

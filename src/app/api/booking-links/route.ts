@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAirportIndex } from "@/lib/airports-index";
 import { createCallContext } from "@/lib/engine/calls";
 import { checkHiddenMarket, type LowerPrice } from "@/lib/engine/hidden-market";
-import { createAviasalesProvider, parseRef } from "@/lib/providers/aviasales";
+import { createAviasalesProvider, newSubId, parseRef } from "@/lib/providers/aviasales";
 import { ignavProvider } from "@/lib/providers/ignav";
 import { clientOf } from "@/lib/client";
 import { getAirlineCountries } from "@/lib/airlines-index";
@@ -40,8 +40,9 @@ async function hiddenMarketsFor(store: Store, key: BookingKey, settings: Setting
 // The UK-market links are returned as-is; another market is checked in parallel and,
 // if it's cheaper, only a GBP price and quote id are returned — never its seller or link.
 export async function POST(request: Request) {
-  const { providerRef, adults, children, infants, bookingKey, priceGbp, refundable } = (await request.json().catch(() => ({}))) as {
+  const { providerRef, adults, children, infants, bookingKey, priceGbp, refundable, searchId } = (await request.json().catch(() => ({}))) as {
     providerRef?: string;
+    searchId?: string;
     refundable?: boolean;
     adults?: number;
     children?: number;
@@ -56,8 +57,33 @@ export async function POST(request: Request) {
   const filters = { adults, children: children ?? 0, infants: infants ?? 0, allowSelfTransfer: false };
 
   // Aviasales fares carry their own link token; the lower-price check still looks the flights up on Ignav.
-  const provider = parseRef(providerRef) ? createAviasalesProvider(clientOf(request)) : ignavProvider;
-  const ukLinks = provider.getBookingLinks(providerRef, filters, ctx, bookingKey);
+  const aviasalesRef = parseRef(providerRef);
+  const provider = aviasalesRef ? createAviasalesProvider(clientOf(request)) : ignavProvider;
+  // Each Aviasales link gets its own SubID, recorded with the trip, so a booking in
+  // Travelpayouts' reports can be matched back to it.
+  const subId = aviasalesRef ? newSubId() : undefined;
+  const ukLinks = provider.getBookingLinks(providerRef, filters, ctx, bookingKey, subId);
+  // Awaited before replying: on Vercel, work left running after the response can be cut off.
+  const recorded = !(aviasalesRef && subId)
+    ? Promise.resolve()
+    : ukLinks.then((links) =>
+        links.length
+          ? store.logBookingClick({
+              sub_id: subId,
+              created_at: new Date().toISOString(),
+              provider: "aviasales",
+              seller: aviasalesRef.seller || null,
+              search_id: typeof searchId === "string" ? searchId.slice(0, 64) : null,
+              origin: bookingKey?.origin ?? null,
+              dest: bookingKey?.dest ?? null,
+              depart_date: bookingKey?.date ?? null,
+              return_date: bookingKey?.ret?.date ?? null,
+              flights: bookingKey ? (bookingKey.flights ?? [`${bookingKey.carrier ?? ""}${bookingKey.flightNumber ?? ""}`]).join(" ") : null,
+              price_gbp: typeof priceGbp === "number" && Number.isFinite(priceGbp) ? priceGbp : null,
+              passengers: { adults: filters.adults, children: filters.children, infants: filters.infants },
+            })
+          : undefined,
+      ).catch((err) => console.warn(`booking click not recorded: ${(err as Error).message}`));
   let lowerPrice: Promise<LowerPrice | null> = Promise.resolve(null);
   // A refundable fare isn't matched by "same flights, lower price": the cheaper fare may not be refundable.
   if (bookingKey && !refundable) {
@@ -82,7 +108,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const [links, lower] = await Promise.all([ukLinks, lowerPrice]);
+    const [links, lower] = await Promise.all([ukLinks, lowerPrice, recorded]);
     return NextResponse.json({ links, lowerPrice: lower });
   } catch (err) {
     const lower = await lowerPrice;

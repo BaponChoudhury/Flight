@@ -30,7 +30,7 @@ npm run dev                  # http://localhost:3000
 ### Supabase
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. In **SQL Editor**, run `supabase/migrations/0001_init.sql`, then `supabase/migrations/0002_seed.sql`.
+2. In **SQL Editor**, run `supabase/migrations/0001_init.sql`, then `supabase/migrations/0002_seed.sql`, then the later ones in order (`0003_kv.sql`, `0004_fare_quotes.sql`, `0005_booking_clicks.sql`).
 3. From **Project Settings → API**, copy the Project URL into `SUPABASE_URL` and the `service_role` key into `SUPABASE_SERVICE_ROLE_KEY`.
 
 All tables have row-level security enabled with no policies, so the public anon key can't read them. The server uses the service-role key.
@@ -128,6 +128,17 @@ There's no free API for live UK train or coach prices, or for taxi quotes (Train
 - **Use** picks the cheapest option for your group, or forces train, coach or cab. For example, choose cab for a very early flight when no trains are running.
 - Totals and the ranking update straight away, with no new Ignav calls. Each route card shows the alternative and the price difference.
 - Your entries are saved in your browser, per home area. The first time, they're filled in from the `ground_access` defaults in Admin.
+
+## Tracking Aviasales bookings (SubIDs)
+
+Aviasales pays commission through Travelpayouts. To tell which booking came from which trip:
+
+- Every Aviasales booking link the app hands out ("Where to book") gets its own SubID, e.g. `cmvmor82845qe`. The booking link is requested with your partner ID and the SubID joined by a dot (`TRAVELPAYOUTS_MARKER.cmvmor82845qe`), which is how Travelpayouts reads a SubID. SubIDs use letters and digits only, since Travelpayouts rejects hyphens.
+- Each link is saved in the `booking_clicks` table: SubID, time, route and dates, flights, seller, price, passengers, and the search it came from.
+- When a booking shows up in Travelpayouts (Statistics → Aviasales → Bookings, SubID column), find that SubID under **Aviasales booking clicks** in Admin. Bookings appear with a delay, and commission is confirmed after the trip.
+- A saved link isn't proof the user opened it: it's recorded when the app fetches the link for them.
+- Ignav has no affiliate programme, so Ignav bookings can't be tracked.
+- **Setup:** run `supabase/migrations/0005_booking_clicks.sql`. Until you do, links still work, but clicks aren't saved (the server logs a warning).
 
 ## Lower prices from other markets (hidden from users)
 

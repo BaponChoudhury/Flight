@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { AppConfig } from "@/lib/types";
+import type { BookingClick } from "@/lib/store";
 
 type Row = Record<string, unknown>;
 
@@ -121,6 +122,75 @@ function FareRequests() {
           );
         })}
       </ul>
+    </details>
+  );
+}
+
+function BookingClicks() {
+  const [rows, setRows] = useState<BookingClick[] | null>(null);
+  const [error, setError] = useState("");
+  const [filter, setFilter] = useState("");
+  async function load() {
+    setError("");
+    const res = await fetch("/api/booking-clicks", { headers: adminHeaders() });
+    const d = await res.json();
+    if (!res.ok) {
+      setError(d.error ?? "Failed");
+      setRows(null);
+      return;
+    }
+    setRows(d.clicks);
+  }
+  useEffect(() => {
+    load();
+  }, []);
+  const q = filter.trim().toLowerCase();
+  const shown = rows?.filter((r) => !q || r.sub_id.toLowerCase().includes(q));
+  return (
+    <details className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+      <summary className="cursor-pointer font-semibold">Aviasales booking clicks {rows ? `(${rows.length})` : ""}</summary>
+      <p className="my-2 text-sm text-slate-600 dark:text-slate-400">
+        Every Aviasales booking link we hand out carries its own SubID. When a booking appears in Travelpayouts (Statistics → Aviasales → Bookings, SubID
+        column), paste the SubID here to see which trip and price it came from. Bookings show up in Travelpayouts with a delay; commission is confirmed
+        after the trip.
+      </p>
+      <div className="mb-2 flex gap-2">
+        <input className={input} placeholder="Find a SubID" aria-label="Find a SubID" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <button type="button" className="rounded border border-slate-300 px-3 py-1 text-sm dark:border-slate-600" onClick={load}>Refresh</button>
+      </div>
+      {error && <p className="text-sm text-rose-700">{error}</p>}
+      {shown?.length === 0 && <p className="text-sm">{q ? "No click with that SubID." : "No booking links handed out yet."}</p>}
+      {shown && shown.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs text-slate-500">
+              <tr>
+                <th className="py-1 pr-3">SubID</th>
+                <th className="py-1 pr-3">When</th>
+                <th className="py-1 pr-3">Trip</th>
+                <th className="py-1 pr-3">Flights</th>
+                <th className="py-1 pr-3">Seller</th>
+                <th className="py-1 pr-3 text-right">Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((r) => (
+                <tr key={r.sub_id} className="border-t border-slate-100 dark:border-slate-800">
+                  <td className="py-1 pr-3 font-mono text-xs">{r.sub_id}</td>
+                  <td className="py-1 pr-3 whitespace-nowrap">{new Date(r.created_at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}</td>
+                  <td className="py-1 pr-3 whitespace-nowrap">
+                    {r.origin ?? "?"} → {r.dest ?? "?"} {r.depart_date ?? ""}
+                    {r.return_date ? `, back ${r.return_date}` : ""} · {r.passengers.adults + r.passengers.children + r.passengers.infants} pax
+                  </td>
+                  <td className="py-1 pr-3">{r.flights ?? "—"}</td>
+                  <td className="py-1 pr-3">{r.seller ?? "—"}</td>
+                  <td className="py-1 pr-3 text-right">{r.price_gbp != null ? `£${r.price_gbp.toFixed(2)}` : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </details>
   );
 }
@@ -249,6 +319,7 @@ export function AdminEditor() {
       </p>
       <AdminKeyBox onSet={() => setKeyVersion((v) => v + 1)} />
       <FareRequests key={keyVersion} />
+      <BookingClicks key={`clicks-${keyVersion}`} />
       {TABLES.map((t) => <TableEditor key={t.table} spec={t} initial={data.config[t.key] as unknown as Row[]} />)}
       <SettingsEditor initial={data.config.settings} />
     </div>

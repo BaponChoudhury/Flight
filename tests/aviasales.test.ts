@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { defaultConfig } from "@/lib/config/defaults";
 import { refundableView } from "@/lib/engine/rules";
 import { runSearch } from "@/lib/engine/search";
-import { bagPieces, fareTermsOf, looksSelfTransfer, normaliseSearch, parseRef, signatureString, type AviasalesSearch } from "@/lib/providers/aviasales";
+import { bagPieces, createAviasalesProvider, fareTermsOf, looksSelfTransfer, markerWithSubId, newSubId, normaliseSearch, parseRef, signatureString, type AviasalesSearch } from "@/lib/providers/aviasales";
 import type { FlightProvider, SearchFilters } from "@/lib/providers/types";
 import { createMemoryStore } from "@/lib/store";
 import type { SearchRequest } from "@/lib/types";
@@ -228,5 +229,39 @@ describe("runSearch with Aviasales alongside Ignav", () => {
     const res = await runSearch({ ...req, refundableOnly: true }, { store: createMemoryStore(), provider: ignav.p });
     expect(ignav.calls).toEqual([]);
     expect(res.errors.join(" ")).toMatch(/Aviasales isn't set up/);
+  });
+});
+
+describe("SubIDs on Aviasales booking links", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("makes short SubIDs of letters and digits only (Travelpayouts rejects hyphens)", () => {
+    const id = newSubId(Date.parse("2026-10-24T12:00:00Z"), () => 0.5);
+    expect(id).toMatch(/^c[a-z0-9]+$/);
+    expect(id.length).toBeLessThanOrEqual(14);
+    expect(newSubId()).not.toBe(newSubId());
+  });
+
+  it("puts the SubID after the partner ID, separated by a dot", () => {
+    expect(markerWithSubId("123456", "cabc123")).toBe("123456.cabc123");
+    expect(markerWithSubId("123456")).toBe("123456");
+    expect(markerWithSubId("123456", "bad-id")).toBe("123456"); // never send a malformed SubID
+  });
+
+  it("asks Aviasales for the booking link with the partner ID and SubID", async () => {
+    vi.stubEnv("TRAVELPAYOUTS_MARKER", "123456");
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", async (url: string) => {
+      urls.push(url);
+      return new Response(JSON.stringify({ url: "https://seller.example/book", method: "GET" }));
+    });
+    const provider = createAviasalesProvider({ ip: "1.2.3.4", host: "example.com" });
+    const ctx = { settings: defaultConfig().settings, log: [], call: async (req: { fetcher: () => Promise<unknown> }) => ({ raw: await req.fetcher(), fetchedAt: "x", fromCache: false }) };
+    const links = await provider.getBookingLinks("as1|sid-1|101|CheapTrips", { adults: 1, children: 0, allowSelfTransfer: false }, ctx as never, undefined, "cabc123");
+    expect(links[0].url).toBe("https://seller.example/book");
+    expect(new URL(urls[0]).searchParams.get("marker")).toBe("123456.cabc123");
   });
 });
