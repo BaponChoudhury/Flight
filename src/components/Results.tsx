@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { applyGround, groundChoices, pickGround, rankOptions, type GroundChoice } from "@/lib/engine/rules";
+import { applyGround, groundChoices, pickGround, rankOptions, refundableView, type GroundChoice } from "@/lib/engine/rules";
 import { formatDuration, formatLocalDay, formatLocalTime } from "@/lib/engine/time";
 import type { Badge, BookingLink, FareTerms, FlightLeg, ProviderId, RouteOption, SearchRequest, SearchResponse, Settings } from "@/lib/types";
 import { EMPTY_DRAFT, GroundPanel, toInput, type GroundDraft } from "./GroundPanel";
@@ -391,6 +391,7 @@ function initialDrafts(data: SearchResponse, req: SearchRequest): Record<string,
 
 export function Results({ data, req, settings }: { data: SearchResponse; req: SearchRequest; settings: Settings }) {
   const [priceWeight, setPriceWeight] = useState(0.6);
+  const [refundableOnly, setRefundableOnly] = useState(false);
   const pax = req.adults + req.children;
   const airports = useMemo(() => [...new Set(data.options.map((o) => o.ukAirport))].sort(), [data.options]);
   const [drafts, setDrafts] = useState<Record<string, GroundDraft>>({});
@@ -411,13 +412,18 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
     for (const a of airports) m[a] = groundChoices(toInput(drafts[a] ?? EMPTY_DRAFT), pax);
     return m;
   }, [airports, drafts, pax]);
+  // The refundable filter swaps each option for its refundable fare, if it has one: no new search.
+  const shown = useMemo(
+    () => (refundableOnly ? data.options.flatMap((o) => refundableView(o) ?? []) : data.options),
+    [data.options, refundableOnly],
+  );
   const options = useMemo(
     () =>
-      data.options.map((o) => {
+      shown.map((o) => {
         const choice = pickGround(toInput(drafts[o.ukAirport] ?? EMPTY_DRAFT), pax);
         return choice ? applyGround(o, choice, settings.uk_airport_arrival_mins, settings.uk_arrival_exit_mins ?? 60) : o;
       }),
-    [data.options, drafts, pax, settings.uk_airport_arrival_mins, settings.uk_arrival_exit_mins],
+    [shown, drafts, pax, settings.uk_airport_arrival_mins, settings.uk_arrival_exit_mins],
   );
   const ranked = useMemo(() => rankOptions(options, priceWeight, settings), [options, priceWeight, settings]);
   const tz = data.airportTz;
@@ -452,6 +458,18 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
       {data.options.length > 0 && (
         <>
           <GroundPanel originArea={req.originArea} airports={airports} drafts={drafts} pax={pax} onChange={updateDraft} returnTrip={!!req.returnDate} />
+
+          <label className="flex items-start gap-2 text-base">
+            <input type="checkbox" className="mt-1 h-5 w-5" checked={refundableOnly} onChange={(e) => setRefundableOnly(e.target.checked)} />
+            <span>
+              Refundable tickets only
+              <span className="block text-sm text-slate-600 dark:text-slate-400">
+                {refundableOnly
+                  ? `${options.length} refundable option${options.length === 1 ? "" : "s"}. Refund rules come from Aviasales; split tickets with an Ignav flight can't be checked.`
+                  : "Money back if you cancel before departure (a fee may apply). Usually pricier."}
+              </span>
+            </span>
+          </label>
 
           <div className="grid gap-3">
             {ranked.cheapest && <OptionCard o={ranked.cheapest} tz={tz} req={req} highlight="Cheapest" groundAlts={alts[ranked.cheapest.ukAirport] ?? []} />}
