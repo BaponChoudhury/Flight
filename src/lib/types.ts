@@ -283,6 +283,8 @@ export interface RouteOption {
   priceAsOf: string; // earliest observed/fetched time across legs
   /** The same flights from other sources, more expensive (or bag-unconfirmed) than this one. */
   otherPrices?: { provider: ProviderId; seller: string | null; totalGbp: number }[];
+  /** The same flights on a refundable fare, when this option's fare isn't refundable (for the results filter). */
+  refundableVersion?: RouteOption;
 }
 
 export interface CallLogEntry {

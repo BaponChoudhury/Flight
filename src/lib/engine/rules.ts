@@ -253,3 +253,10 @@ export function applyGround(o: RouteOption, choice: GroundChoice, ukArrivalMins:
     totalMins: outMins + (back?.totalMins ?? 0),
   };
 }
+
+// ---------- Refundable filter (results page) ----------
+
+export const isRefundable = (o: RouteOption) => o.badges.includes("Refundable");
+
+/** The option as shown with "Refundable tickets only" on, or null if it has no refundable fare. */
+export const refundableView = (o: RouteOption): RouteOption | null => (isRefundable(o) ? o : (o.refundableVersion ?? null));

@@ -51,7 +51,6 @@ export function SearchForm({
     latestArriveHour: null,
     minBufferMins: config.settings.min_buffer_mins,
     allowOvernight: false,
-    refundableOnly: false,
   });
   const set = <K extends keyof typeof req>(k: K, v: (typeof req)[K]) => setReq((r) => ({ ...r, [k]: v }));
   const hourOpt = (v: string) => (v === "" ? null : Number(v));
@@ -340,14 +339,6 @@ export function SearchForm({
           </label>
         </div>
       )}
-
-      <label className="flex items-start gap-2 text-base">
-        <input type="checkbox" className="mt-1 h-5 w-5" checked={!!req.refundableOnly} onChange={(e) => set("refundableOnly", e.target.checked)} />
-        <span>
-          Refundable tickets only
-          <span className="block text-sm text-slate-600 dark:text-slate-400">Money back if you cancel before departure (a fee may apply). Fewer, usually pricier fares.</span>
-        </span>
-      </label>
 
       {formError && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{formError}</p>}
       <button type="submit" disabled={busy || locating} className="w-full rounded-lg bg-sky-700 px-4 py-3 text-lg font-semibold text-white disabled:opacity-50">

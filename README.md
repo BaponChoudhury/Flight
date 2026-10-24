@@ -19,7 +19,7 @@ npm run dev                  # http://localhost:3000
 | Variable | Needed for | Notes |
 |---|---|---|
 | `IGNAV_API_KEY` | Searches | Server-side only. Billed per successful request. |
-| `TRAVELPAYOUTS_TOKEN`, `TRAVELPAYOUTS_MARKER` | Aviasales fares, refundable filter | Optional. Your Travelpayouts API token and partner ID (marker). Without them, searches use Ignav only and "Refundable tickets only" is unavailable. |
+| `TRAVELPAYOUTS_TOKEN`, `TRAVELPAYOUTS_MARKER` | Aviasales fares, refundable filter | Optional. Your Travelpayouts API token and partner ID (marker). Without them, searches use Ignav only and the "Refundable tickets only" filter finds nothing. |
 | `SUPABASE_URL` | Persistent cache/config | Optional in Phase 1. Without it, an in-memory store is used (cache and admin edits reset on restart). |
 | `SUPABASE_ANON_KEY` | Phase 2 auth | Not used yet. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Persistent cache/config | Server-side only. Never expose to the browser. |
@@ -147,7 +147,8 @@ How it works:
   - fares the seller marks as self-transfer ("virtual interline") are treated like Ignav's own combinations: split where the trip enters India, with the same connection checks and warning;
   - so are fares that mix airlines sharing no alliance, e.g. Ryanair + Azerbaijan Airlines, because sellers don't always flag them.
 - **Refund and change rules:** each fare card shows "Refundable before departure (fee about £X)" or "Non-refundable", plus whether date changes are allowed. A fare only counts as refundable when every flight on it says so. Trips where every ticket is refundable get a **Refundable** badge.
-- **"Refundable tickets only"** (search form): only refundable Aviasales fares are shown. Ignav isn't called at all, since it has no refund data, and split tickets built from separate searches aren't included. A refundable fare also skips the lower-price check, because a cheaper fare for the same flights may not be refundable.
+- **"Refundable tickets only"** (results page): a filter, not a new search. For each trip Aviasales returns, the search keeps the cheapest fare and, when that one isn't refundable, the cheapest refundable fare too. Identical trips are shown once at the cheapest price, with the refundable fare attached. The filter swaps each result for its refundable fare and hides results that have none. Split tickets with an Ignav flight never qualify, since Ignav has no refund data. A refundable fare also skips the lower-price check, because a cheaper fare for the same flights may not be refundable.
+- The search API still accepts `refundableOnly: true`, which searches Aviasales refundable fares only and skips Ignav. The app no longer sends it.
 - **Booking links:** fetched only when the user taps **Get booking links**, as the API terms require. Prices and links last 15 minutes, so Aviasales results are cached for 10 minutes, and an expired link asks the user to search again.
 - **User details:** each search sends the user's own IP (from `x-forwarded-for`) and the site's host, as the API requires. The cache stores only the search itself, never the IP.
 - **Limits:**

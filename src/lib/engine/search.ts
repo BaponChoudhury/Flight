@@ -17,7 +17,7 @@ import type {
 } from "@/lib/types";
 import { countPaid, createCallContext } from "./calls";
 import { domesticDatesNeeded, hubsToSearch, pruneInternational } from "./prune";
-import { aggregateCosts, assessBags, checkConnection, groundCost, type ConnectionCheck } from "./rules";
+import { aggregateCosts, assessBags, checkConnection, groundCost, isRefundable, refundableView, type ConnectionCheck } from "./rules";
 import { addDays, addMinutes, localDate, localHour, minutesBetween } from "./time";
 import { knownTz } from "@/lib/config/places";
 
@@ -39,6 +39,15 @@ export function selectForReturn<T extends { costs: { total: number }; totalMins:
     }
   }
   return byCost.filter((o) => keep.has(o));
+}
+
+/** selectForReturn, plus the best of the options the refundable filter would show. */
+function keepRefundableToo(options: RouteOption[]): RouteOption[] {
+  const kept = new Set(selectForReturn(options));
+  const views = options.flatMap((o) => (refundableView(o) ? [{ o, view: refundableView(o)! }] : []));
+  const bestViews = new Set(selectForReturn(views.map((v) => v.view)));
+  for (const v of views) if (bestViews.has(v.view)) kept.add(v.o);
+  return options.filter((o) => kept.has(o)).sort((a, b) => a.costs.total - b.costs.total || a.totalMins - b.totalMins);
 }
 
 export function validateRequest(r: SearchRequest): string | null {
@@ -520,7 +529,8 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
       const prev = others.get(it.provider);
       if (!prev || o.costs.total < prev.totalGbp) others.set(it.provider, { provider: it.provider, seller: it.seller ?? null, totalGbp: o.costs.total });
     }
-    bySig.set(k, others.size ? { ...keep, otherPrices: [...others.values()] } : keep);
+    const refundable = isRefundable(keep) ? undefined : rest.find(isRefundable);
+    bySig.set(k, others.size || refundable ? { ...keep, otherPrices: others.size ? [...others.values()] : undefined, refundableVersion: refundable } : keep);
   }
   const unique = [...bySig.values()].sort((a, b) => a.costs.total - b.costs.total || a.totalMins - b.totalMins);
 
@@ -545,7 +555,7 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
 
   return {
     searchId,
-    options: selectForReturn(unique),
+    options: keepRefundableToo(unique),
     stats: { paidCalls, paidByProvider, cacheHits, failedCalls: failed, durationMs, calls: ctx.log },
     errors: dedupeErrors(errors),
     notes,

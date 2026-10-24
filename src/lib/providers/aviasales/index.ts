@@ -268,7 +268,11 @@ export function normaliseSearch(raw: AviasalesSearch, o: NormaliseOpts): { out: 
 
     const unflaggedCombo = legs.map((l) => looksSelfTransfer(l, raw.alliances));
     const selfTransferLeg = (term: RawTerm, i: number) => isVirtualInterline(term, i) || unflaggedCombo[i];
-    let best: { gate: string; term: RawTerm; gbp: number; terms: FareTerms; pieces: (number | null)[] } | null = null;
+    type Pick = { gate: string; term: RawTerm; gbp: number; terms: FareTerms; pieces: (number | null)[] };
+    // The cheapest seller, plus the cheapest refundable one when that's a different fare,
+    // so the results page can filter to refundable tickets without a new search.
+    let best: Pick | null = null;
+    let bestRefundable: Pick | null = null;
     for (const [gate, term] of Object.entries(p.terms)) {
       const gbp = term.unified_price / raw.rates.gbp;
       if (!Number.isFinite(gbp) || gbp <= 0) continue;
@@ -278,64 +282,68 @@ export function normaliseSearch(raw: AviasalesSearch, o: NormaliseOpts): { out: 
       const pieces = legs.map((_, i) => legPieces(term.flights_baggage?.[i] ?? undefined));
       // Like Ignav's bag filter: drop fares known to lack the bags; unknown stays ("bag price unknown").
       if (f.minCheckedBags && pieces.some((n) => n != null && n < f.minCheckedBags!)) continue;
-      if (!best || gbp < best.gbp) best = { gate, term, gbp, terms, pieces };
+      const pick: Pick = { gate, term, gbp, terms, pieces };
+      if (!best || gbp < best.gbp) best = pick;
+      if (terms.refundable === true && (!bestRefundable || gbp < bestRefundable.gbp)) bestRefundable = pick;
     }
     if (!best) continue;
 
-    const seller = raw.gates[best.gate] ?? null;
-    const providerRef = `as1|${raw.searchId}|${best.term.url}|${encodeURIComponent(seller ?? "")}`;
-    const totalGbp = Math.round(best.gbp * 100) / 100;
-    const build = (flights: RawFlight[], i: number, priced: boolean): NormalisedItinerary => {
-      const segments: NormalisedSegment[] = flights.map((fl) => ({
-        carrier: fl.marketing_carrier,
-        carrierName: null,
-        flightNumber: fl.number,
-        origin: fl.departure,
-        dest: fl.arrival,
-        departUtc: new Date(fl.departure_timestamp * 1000).toISOString(),
-        arriveUtc: new Date(fl.arrival_timestamp * 1000).toISOString(),
-        departTz: tz(fl.departure),
-        arriveTz: tz(fl.arrival),
-        durationMins: fl.duration,
-        aircraft: fl.aircraft ?? null,
-      }));
-      const s0 = segments[0];
-      const sN = segments[segments.length - 1];
-      return {
-        provider: "aviasales",
-        providerRef,
-        origin: s0.origin,
-        dest: sN.dest,
-        departUtc: s0.departUtc,
-        arriveUtc: sN.arriveUtc,
-        durationMins: Math.round((Date.parse(sN.arriveUtc) - Date.parse(s0.departUtc)) / 60000),
-        carrier: s0.carrier,
-        carrierName: null,
-        segments,
-        price: {
-          amount: priced ? best!.term.price : 0,
-          currency: best!.term.currency.toUpperCase(),
-          totalGbp: priced ? totalGbp : 0,
-          verified: true,
-          fxApprox: best!.term.currency.toLowerCase() !== "gbp",
-        },
-        baggage: { checkedPieces: best!.pieces[i], carryOnPieces: legPieces(best!.term.flights_handbags?.[i] ?? undefined) },
-        selfTransfer: selfTransferLeg(best!.term, i),
-        fareTerms: best!.terms,
-        seller,
-        observedAt: null,
-        fetchedAt: o.fetchedAt,
-        fromCache: o.fromCache,
-        bookingKey: keyOf(segments),
+    for (const pick of bestRefundable && bestRefundable !== best ? [best, bestRefundable] : [best]) {
+      const seller = raw.gates[pick.gate] ?? null;
+      const providerRef = `as1|${raw.searchId}|${pick.term.url}|${encodeURIComponent(seller ?? "")}`;
+      const totalGbp = Math.round(pick.gbp * 100) / 100;
+      const build = (flights: RawFlight[], i: number, priced: boolean): NormalisedItinerary => {
+        const segments: NormalisedSegment[] = flights.map((fl) => ({
+          carrier: fl.marketing_carrier,
+          carrierName: null,
+          flightNumber: fl.number,
+          origin: fl.departure,
+          dest: fl.arrival,
+          departUtc: new Date(fl.departure_timestamp * 1000).toISOString(),
+          arriveUtc: new Date(fl.arrival_timestamp * 1000).toISOString(),
+          departTz: tz(fl.departure),
+          arriveTz: tz(fl.arrival),
+          durationMins: fl.duration,
+          aircraft: fl.aircraft ?? null,
+        }));
+        const s0 = segments[0];
+        const sN = segments[segments.length - 1];
+        return {
+          provider: "aviasales",
+          providerRef,
+          origin: s0.origin,
+          dest: sN.dest,
+          departUtc: s0.departUtc,
+          arriveUtc: sN.arriveUtc,
+          durationMins: Math.round((Date.parse(sN.arriveUtc) - Date.parse(s0.departUtc)) / 60000),
+          carrier: s0.carrier,
+          carrierName: null,
+          segments,
+          price: {
+            amount: priced ? pick.term.price : 0,
+            currency: pick.term.currency.toUpperCase(),
+            totalGbp: priced ? totalGbp : 0,
+            verified: true,
+            fxApprox: pick.term.currency.toLowerCase() !== "gbp",
+          },
+          baggage: { checkedPieces: pick.pieces[i], carryOnPieces: legPieces(pick.term.flights_handbags?.[i] ?? undefined) },
+          selfTransfer: selfTransferLeg(pick.term, i),
+          fareTerms: pick.terms,
+          seller,
+          observedAt: null,
+          fetchedAt: o.fetchedAt,
+          fromCache: o.fromCache,
+          bookingKey: keyOf(segments),
+        };
       };
-    };
-    const out = build(legs[0], 0, true);
-    const back = legs[1] ? build(legs[1], 1, false) : null;
-    if (back) {
-      const r = back.bookingKey!;
-      out.bookingKey = { ...out.bookingKey!, ret: { date: r.date, carrier: r.carrier, flightNumber: r.flightNumber, flights: r.flights } };
+      const out = build(legs[0], 0, true);
+      const back = legs[1] ? build(legs[1], 1, false) : null;
+      if (back) {
+        const r = back.bookingKey!;
+        out.bookingKey = { ...out.bookingKey!, ret: { date: r.date, carrier: r.carrier, flightNumber: r.flightNumber, flights: r.flights } };
+      }
+      result.push({ out, back });
     }
-    result.push({ out, back });
   }
   return result;
 }

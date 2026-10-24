@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { refundableView } from "@/lib/engine/rules";
 import { runSearch } from "@/lib/engine/search";
 import { bagPieces, fareTermsOf, looksSelfTransfer, normaliseSearch, parseRef, signatureString, type AviasalesSearch } from "@/lib/providers/aviasales";
 import type { FlightProvider, SearchFilters } from "@/lib/providers/types";
@@ -103,7 +104,7 @@ describe("Aviasales normalising", () => {
   });
 
   it("prices each trip at its cheapest seller, in GBP for the whole party, with times in UTC", () => {
-    const [ai, combo] = norm();
+    const [ai, , combo] = norm();
     expect(ai.price.totalGbp).toBe(600);
     expect(ai.seller).toBe("CheapTrips");
     expect(ai.fareTerms).toEqual({ refundable: false, refundFeeGbp: null, changeable: true });
@@ -112,6 +113,14 @@ describe("Aviasales normalising", () => {
     expect(parseRef(ai.providerRef)).toEqual({ searchId: "sid-1", url: "101", seller: "CheapTrips" });
     expect(combo.selfTransfer).toBe(true);
     expect(combo.baggage.checkedPieces).toBe(0);
+  });
+
+  it("also keeps the cheapest refundable fare when the cheapest isn't, for the results filter", () => {
+    const [ai, aiRefundable] = norm();
+    expect(ai.fareTerms?.refundable).toBe(false);
+    expect(aiRefundable).toMatchObject({ seller: "Air India", fareTerms: { refundable: true } });
+    expect(aiRefundable.price.totalGbp).toBe(850);
+    expect(aiRefundable.segments.map((x) => x.flightNumber)).toEqual(["162", "889"]);
   });
 
   it("refundable only: picks the refundable seller and drops non-refundable fares", () => {
@@ -124,7 +133,7 @@ describe("Aviasales normalising", () => {
 
   it("drops fares known to lack the bags, self-transfer combos when not allowed, and other airports", () => {
     expect(norm({ minCheckedBags: 2 }).map((i) => i.price.totalGbp)).toEqual([850]);
-    expect(norm({ allowSelfTransfer: false })).toHaveLength(1);
+    expect(norm({ allowSelfTransfer: false }).map((i) => i.price.totalGbp)).toEqual([600, 850]); // Air India, cheapest and refundable
     expect(norm({}, "LGW").map((i) => i.origin)).toEqual(["LGW"]);
     expect(norm({ maxStops: 0 })).toHaveLength(0);
   });
@@ -192,6 +201,17 @@ describe("runSearch with Aviasales alongside Ignav", () => {
     expect(airIndia[0].legs[0].itinerary.provider).toBe("aviasales");
     expect(airIndia[0].costs.fares[0]).toBe(600);
     expect(airIndia[0].otherPrices).toEqual([{ provider: "ignav", seller: null, totalGbp: 700 }]);
+  });
+
+  it("keeps the refundable fare on each option so the results page can filter without a new search", async () => {
+    const res = await runSearch(req, { store: createMemoryStore(), provider: makeIgnav().p, throughProviders: [fakeAviasales] });
+    const airIndia = res.options.filter((o) => o.legs[0].itinerary.segments[0].flightNumber === "162");
+    expect(airIndia).toHaveLength(1);
+    expect(airIndia[0].costs.fares[0]).toBe(600);
+    expect(airIndia[0].badges).not.toContain("Refundable");
+    expect(airIndia[0].refundableVersion?.costs.fares[0]).toBe(850);
+    expect(airIndia[0].refundableVersion?.badges).toContain("Refundable");
+    expect(res.options.flatMap((o) => refundableView(o) ?? []).map((o) => o.costs.fares[0])).toEqual([850]);
   });
 
   it("refundable only: skips Ignav and returns only refundable fares", async () => {
