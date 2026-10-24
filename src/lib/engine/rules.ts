@@ -199,32 +199,25 @@ export function rankOptions<T extends Scored>(options: T[], priceWeight: number,
 
 export type GroundMode = "train" | "coach" | "cab";
 
-/** What the user typed for one UK airport. Blank fields are null. */
+/** What the user typed for one UK airport (prices only). Blank fields are null. */
 export interface GroundInput {
   trainPerPerson: number | null;
-  trainMins: number | null;
   coachPerPerson: number | null;
-  coachMins: number | null;
   cabTotal: number | null; // whole car
-  cabMins: number | null;
   use: "cheapest" | GroundMode;
 }
 
 export interface GroundChoice {
   mode: GroundMode;
   costGbp: number; // whole party
-  mins: number;
   detail: string;
 }
 
 export function groundChoices(input: GroundInput, pax: number): GroundChoice[] {
   const out: GroundChoice[] = [];
-  if (input.trainPerPerson != null && input.trainMins != null)
-    out.push({ mode: "train", costGbp: input.trainPerPerson * pax, mins: input.trainMins, detail: `${pax} × £${input.trainPerPerson}` });
-  if (input.coachPerPerson != null && input.coachMins != null)
-    out.push({ mode: "coach", costGbp: input.coachPerPerson * pax, mins: input.coachMins, detail: `${pax} × £${input.coachPerPerson}` });
-  if (input.cabTotal != null && input.cabMins != null)
-    out.push({ mode: "cab", costGbp: input.cabTotal, mins: input.cabMins, detail: "whole car" });
+  if (input.trainPerPerson != null) out.push({ mode: "train", costGbp: input.trainPerPerson * pax, detail: `${pax} × £${input.trainPerPerson}` });
+  if (input.coachPerPerson != null) out.push({ mode: "coach", costGbp: input.coachPerPerson * pax, detail: `${pax} × £${input.coachPerPerson}` });
+  if (input.cabTotal != null) out.push({ mode: "cab", costGbp: input.cabTotal, detail: "whole car" });
   return out;
 }
 
@@ -232,27 +225,27 @@ export function groundChoices(input: GroundInput, pax: number): GroundChoice[] {
 export function pickGround(input: GroundInput, pax: number): GroundChoice | null {
   const choices = groundChoices(input, pax);
   if (input.use !== "cheapest") return choices.find((c) => c.mode === input.use) ?? null;
-  return [...choices].sort((a, b) => a.costGbp - b.costGbp || a.mins - b.mins)[0] ?? null;
+  return [...choices].sort((a, b) => a.costGbp - b.costGbp)[0] ?? null;
 }
 
 /**
- * Re-price an option with a different way of getting to the UK airport:
- * replaces the ground cost and moves "leave home" so door-to-door time stays right.
+ * Re-price an option with a different way of getting to the UK airport. Travel time
+ * isn't asked for, so times run from the airport: "leave home" becomes "at the airport by".
  */
 export function applyGround(o: RouteOption, choice: GroundChoice, ukArrivalMins: number, ukExitMins = 60): RouteOption {
   const firstDepart = o.legs[0].itinerary.departUtc;
-  const leaveHomeUtc = addMinutes(firstDepart, -(ukArrivalMins + choice.mins));
+  const leaveHomeUtc = addMinutes(firstDepart, -ukArrivalMins);
   const trips = o.back ? 2 : 1; // home → airport, and airport → home on a return trip
   const ground = Math.round(choice.costGbp * trips * 100) / 100;
   const outMins = minutesBetween(leaveHomeUtc, o.arriveUtc);
   let back = o.back;
   if (back) {
-    const arriveHomeUtc = addMinutes(back.arriveUkUtc, ukExitMins + choice.mins);
+    const arriveHomeUtc = addMinutes(back.arriveUkUtc, ukExitMins);
     back = { ...back, arriveHomeUtc, totalMins: minutesBetween(back.leaveDestUtc, arriveHomeUtc) };
   }
   return {
     ...o,
-    ground: { ...o.ground, mode: choice.mode, cost_gbp: choice.costGbp, per_person: false, duration_mins: choice.mins, notes: choice.detail + (trips === 2 ? ", each way" : "") },
+    ground: { ...o.ground, mode: choice.mode, cost_gbp: choice.costGbp, per_person: false, duration_mins: 0, notes: choice.detail + (trips === 2 ? ", each way" : "") },
     costs: { ...o.costs, ground, total: Math.round((o.costs.total - o.costs.ground + ground) * 100) / 100 },
     leaveHomeUtc,
     outMins,

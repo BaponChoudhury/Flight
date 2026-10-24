@@ -258,16 +258,16 @@ function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz:
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-2xl font-bold">{gbp(o.costs.total)}{o.costs.bagsUnknown && "+"}</span>
           <span className="text-right text-base font-medium">
-            {o.back ? `${formatDuration(o.outMins)} out · ${formatDuration(o.back.totalMins)} back` : `${formatDuration(o.totalMins)} door to door`}
+            {o.back ? `${formatDuration(o.outMins)} out · ${formatDuration(o.back.totalMins)} back` : `${formatDuration(o.totalMins)} from ${o.ukAirport}`}
           </span>
         </div>
         <p className="mt-1 text-base">{routeLabel(o)}{o.back && " · return"}</p>
         <p className="text-sm text-slate-600 dark:text-slate-400">
-          {o.back && "Out: "}Leave home {when(o.leaveHomeUtc, homeTz)} · arrive {when(o.arriveUtc, destTz)}
+          {o.back && "Out: "}At {o.ukAirport} by {when(o.leaveHomeUtc, homeTz)} · arrive {when(o.arriveUtc, destTz)}
         </p>
         {o.back && (
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Back: leave {o.dest} {when(o.back.leaveDestUtc, destTz)} · home {when(o.back.arriveHomeUtc, backHomeTz)}
+            Back: leave {o.dest} {when(o.back.leaveDestUtc, destTz)} · out of {o.back.legs[o.back.legs.length - 1].itinerary.dest} airport {when(o.back.arriveHomeUtc, backHomeTz)}
           </p>
         )}
         {(o.badges.length > 0 || SHOW_SOURCE_TAGS) && (
@@ -289,15 +289,15 @@ function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz:
           )}
           <ol className="space-y-3">
             <li className="border-l-2 border-slate-400 pl-4">
-              <p className="font-semibold">🏠 Leave {req.originArea || "home"} {when(o.leaveHomeUtc, homeTz)}</p>
+              <p className="font-semibold">🏠 Be at {o.ukAirport} by {when(o.leaveHomeUtc, homeTz)}</p>
               <p className="text-sm text-slate-600 dark:text-slate-400">
                 {o.ground.mode === "not set"
                   ? `Travel to ${o.ukAirport} not entered yet — add it under "Getting to the airport".`
-                  : `${modeLabel(o.ground.mode)} to ${o.ukAirport}, about ${formatDuration(o.ground.duration_mins)} · ${gbp(o.costs.ground)}${o.ground.notes ? ` (${o.ground.notes})` : ""}`}
+                  : `${modeLabel(o.ground.mode)} from ${req.originArea || "home"} to ${o.ukAirport} · ${gbp(o.costs.ground)}${o.ground.notes ? ` (${o.ground.notes})` : ""}`}
               </p>
               {other && (
                 <p className="text-sm text-slate-600 dark:text-slate-400">
-                  Or {modeLabel(other.mode).toLowerCase()}: {gbp(other.costGbp)}, about {formatDuration(other.mins)} ({other.costGbp > o.costs.ground ? "+" : "−"}
+                  Or {modeLabel(other.mode).toLowerCase()}: {gbp(other.costGbp)} ({other.costGbp > o.costs.ground ? "+" : "−"}
                   {gbp(Math.abs(other.costGbp - o.costs.ground))})
                 </p>
               )}
@@ -318,11 +318,11 @@ function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz:
                 {o.back.connection && <ConnectionStep c={o.back.connection} />}
                 {o.back.legs.slice(1).map((l, i) => <LegBlock key={`back-${l.itinerary.providerRef}-${i}`} leg={l} tz={tz} req={req} />)}
                 <li className="border-l-2 border-slate-400 pl-4">
-                  <p className="font-semibold">🏠 Home {when(o.back.arriveHomeUtc, backHomeTz)}</p>
+                  <p className="font-semibold">🏠 Out of the airport {when(o.back.arriveHomeUtc, backHomeTz)}</p>
                   <p className="text-sm text-slate-600 dark:text-slate-400">
                     {o.ground.mode === "not set"
                       ? `About 1h to get through ${o.back.legs[o.back.legs.length - 1].itinerary.dest} airport; travel home not entered yet.`
-                      : `About 1h to get through the airport, then ${modeLabel(o.ground.mode).toLowerCase()} home, about ${formatDuration(o.ground.duration_mins)}`}
+                      : `About 1h to get through the airport, then ${modeLabel(o.ground.mode).toLowerCase()} home`}
                   </p>
                 </li>
               </ol>
@@ -372,16 +372,18 @@ function initialDrafts(data: SearchResponse, req: SearchRequest): Record<string,
   } catch {
     /* storage unavailable */
   }
-  // Older saved drafts predate some fields (e.g. coach); fill them in.
-  const drafts: Record<string, GroundDraft> = Object.fromEntries(Object.entries(saved).map(([a, d]) => [a, { ...EMPTY_DRAFT, ...d }]));
+  // Older saved drafts predate some fields (e.g. coach) or have travel times; keep just the prices.
+  const drafts: Record<string, GroundDraft> = Object.fromEntries(
+    Object.entries(saved).map(([a, d]) => [a, { trainPerPerson: d.trainPerPerson ?? "", coachPerPerson: d.coachPerPerson ?? "", cabTotal: d.cabTotal ?? "", use: d.use ?? "cheapest" }]),
+  );
   for (const o of data.options) {
     const g = o.ground;
     if (drafts[o.ukAirport] || g.mode === "not set") continue;
     const perPerson = g.per_person ? g.cost_gbp : null;
     drafts[o.ukAirport] = {
       ...EMPTY_DRAFT,
-      ...(g.mode === "train" && perPerson != null ? { trainPerPerson: String(perPerson), trainMins: String(g.duration_mins) } : {}),
-      ...(g.mode === "cab" && !g.per_person ? { cabTotal: String(g.cost_gbp), cabMins: String(g.duration_mins) } : {}),
+      ...(g.mode === "train" && perPerson != null ? { trainPerPerson: String(perPerson) } : {}),
+      ...(g.mode === "cab" && !g.per_person ? { cabTotal: String(g.cost_gbp) } : {}),
     };
   }
   return drafts;

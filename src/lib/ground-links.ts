@@ -28,13 +28,13 @@ export function groundLinks(originArea: string, airportCode: string) {
   const dest = airportPlaceName(airportCode);
   return {
     train: [
-      { label: "Train times (Google Maps)", href: mapsDirections(originArea, dest, "transit"), prefilled: true },
-      { label: "National Rail fares", href: "https://www.nationalrail.co.uk/journey-planner/", prefilled: false },
+      { label: "Google Maps", href: mapsDirections(originArea, dest, "transit"), prefilled: true },
+      { label: "National Rail", href: "https://www.nationalrail.co.uk/journey-planner/", prefilled: false },
     ],
     coach: [
       { label: "National Express", href: "https://www.nationalexpress.com/en", prefilled: false },
       { label: "FlixBus", href: "https://www.flixbus.co.uk/", prefilled: false },
     ],
-    cab: [{ label: "Drive time (Google Maps)", href: mapsDirections(originArea, dest, "driving"), prefilled: true }],
+    cab: [{ label: "Google Maps", href: mapsDirections(originArea, dest, "driving"), prefilled: true }],
   } satisfies Record<"train" | "coach" | "cab", GroundLink[]>;
 }
