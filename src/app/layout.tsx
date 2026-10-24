@@ -23,9 +23,14 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               </span>
               <span className="text-lg font-bold tracking-tight">Flights to India</span>
             </Link>
-            <Link href="/admin" className="rounded-lg px-3 py-1.5 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white">
-              Admin
-            </Link>
+            <div className="flex items-center gap-1">
+              <Link href="/claim" className="rounded-lg px-3 py-1.5 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white">
+                Claim compensation
+              </Link>
+              <Link href="/admin" className="rounded-lg px-3 py-1.5 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white">
+                Admin
+              </Link>
+            </div>
           </nav>
         </header>
         <main className="pb-16">{children}</main>

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
+import { compensairConfigured } from "@/lib/compensair";
 import { CONFIG_TABLES, getStore, type ConfigTable } from "@/lib/store";
 import type { Settings } from "@/lib/types";
 
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const store = getStore();
   const config = await store.loadConfig();
-  return NextResponse.json({ config, storage: store.kind, hasApiKey: !!process.env.IGNAV_API_KEY });
+  return NextResponse.json({ config, storage: store.kind, hasApiKey: !!process.env.IGNAV_API_KEY, hasCompensair: compensairConfigured() });
 }
 
 export async function PUT(request: Request) {

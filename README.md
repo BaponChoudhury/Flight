@@ -24,6 +24,7 @@ npm run dev                  # http://localhost:3000
 | `SUPABASE_ANON_KEY` | Phase 2 auth | Not used yet. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Persistent cache/config | Server-side only. Never expose to the browser. |
 | `ADMIN_PASSWORD` | Admin | Unlocks hidden-market fare requests and config edits on `/admin`. Admin data stays locked without it. |
+| `COMPENSAIR_TOKEN` | Compensation claims | Your Compensair partner token. Server-side only. |
 | `APP_PASSWORD` | Optional | Password-protects the whole app (any username). Recommended when deployed, since there are no accounts yet. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Phase 3 | Not used yet. |
 
@@ -128,6 +129,17 @@ There's no free API for live UK train or coach prices, or for taxi quotes (Train
 - **Use** picks the cheapest option for your group, or forces train, coach or cab. For example, choose cab for a very early flight when no trains are running.
 - Totals and the ranking update straight away, with no new Ignav calls. Each route card shows the alternative and the price difference.
 - Your entries are saved in your browser, per home area. The first time, they're filled in from the `ground_access` defaults in Admin.
+
+## Compensation claims (Compensair)
+
+Passengers whose flight was delayed, cancelled or overbooked can claim compensation through our partner [Compensair](https://www.compensair.com/en/api.html), from **Claim compensation** in the header (`/claim`).
+
+- The form asks only for what Compensair requires: what happened, how late they arrived (under 2h, 2–3h, 3–4h, over 4h), airports, date, flight number, booking reference, name and email, plus an optional phone number and description. Compensair asks the passenger for anything else later.
+- `/api/claims` checks the details and sends them to `POST https://www.compensair.com/api/v1/applications/` with our partner token. The flight number is sent as the airline code plus 4 digits (`AI162` → `ai` + `0162`), and our own reference goes in `customTrackingId`.
+- The passenger must tick a consent box. We keep no copy of their details.
+- **Admin → Compensation claims (Compensair)** lists claims sent with our token in the last year, read live from Compensair (`GET /api/v1/applications/`), with their stage and compensation.
+- The page explains which flights qualify under UK/EU rules. Compensair makes the final decision.
+- **Setup:** set `COMPENSAIR_TOKEN` (from the partner-profile link Compensair emailed you). Without it the form says claims aren't available. Admin shows whether the token is set.
 
 ## Tracking Aviasales bookings (SubIDs)
 

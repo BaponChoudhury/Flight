@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { AppConfig } from "@/lib/types";
 import type { BookingClick } from "@/lib/store";
+import type { CompensairCase } from "@/lib/compensair";
 
 type Row = Record<string, unknown>;
 
@@ -195,6 +196,73 @@ function BookingClicks() {
   );
 }
 
+function CompensairClaims() {
+  const [rows, setRows] = useState<CompensairCase[] | null>(null);
+  const [error, setError] = useState("");
+  async function load() {
+    setError("");
+    const res = await fetch("/api/compensair-claims", { headers: adminHeaders() });
+    const d = await res.json();
+    if (!res.ok) {
+      setError(d.error ?? "Failed");
+      setRows(null);
+      return;
+    }
+    setRows(d.cases);
+  }
+  useEffect(() => {
+    load();
+  }, []);
+  return (
+    <details className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+      <summary className="cursor-pointer font-semibold">Compensation claims (Compensair) {rows ? `(${rows.length})` : ""}</summary>
+      <p className="my-2 text-sm text-slate-600 dark:text-slate-400">
+        Claims sent with your Compensair partner token in the last year, read live from Compensair. &quot;Our ref&quot; is the reference shown to the
+        passenger when they submitted. Commission depends on the claim succeeding.
+      </p>
+      <button type="button" className="mb-2 rounded border border-slate-300 px-3 py-1 text-sm dark:border-slate-600" onClick={load}>Refresh</button>
+      {error && <p className="text-sm text-rose-700">{error}</p>}
+      {rows?.length === 0 && <p className="text-sm">No claims yet.</p>}
+      {rows && rows.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs text-slate-500">
+              <tr>
+                <th className="py-1 pr-3">Received</th>
+                <th className="py-1 pr-3">Flight</th>
+                <th className="py-1 pr-3">Disruption</th>
+                <th className="py-1 pr-3">Stage</th>
+                <th className="py-1 pr-3 text-right">Compensation</th>
+                <th className="py-1 pr-3">Our ref</th>
+                <th className="py-1 pr-3">Compensair ID</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className="border-t border-slate-100 dark:border-slate-800">
+                  <td className="py-1 pr-3 whitespace-nowrap">{r.receptionDate ?? "—"}</td>
+                  <td className="py-1 pr-3 whitespace-nowrap">
+                    {[r.airline, r.flight].filter(Boolean).join("") || "—"} {r.departure && r.arrival ? `${r.departure}→${r.arrival}` : ""} {r.flightDate ?? ""}
+                  </td>
+                  <td className="py-1 pr-3">{r.disruption ?? "—"}</td>
+                  <td className="py-1 pr-3">
+                    {r.stage ?? "—"}
+                    {r.test ? " (test)" : ""}
+                    {r.duplicate ? " (duplicate)" : ""}
+                  </td>
+                  <td className="py-1 pr-3 text-right">{r.totalCompensation ?? "—"}</td>
+                  <td className="py-1 pr-3 font-mono text-xs">{r.customTrackingId ?? "—"}</td>
+                  <td className="py-1 pr-3 font-mono text-xs">{r.id}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </details>
+  );
+}
+
 function AdminKeyBox({ onSet }: { onSet: () => void }) {
   const [value, setValue] = useState(adminKey());
   return (
@@ -303,7 +371,7 @@ function SettingsEditor({ initial }: { initial: AppConfig["settings"] }) {
 }
 
 export function AdminEditor() {
-  const [data, setData] = useState<{ config: AppConfig; storage: string; hasApiKey: boolean } | null>(null);
+  const [data, setData] = useState<{ config: AppConfig; storage: string; hasApiKey: boolean; hasCompensair?: boolean } | null>(null);
   const [keyVersion, setKeyVersion] = useState(0);
   useEffect(() => {
     fetch("/api/config").then((r) => r.json()).then(setData);
@@ -315,11 +383,12 @@ export function AdminEditor() {
       <p className="text-sm">
         Storage: <strong>{data.storage}</strong>
         {data.storage === "memory" && " — changes are lost when the server restarts. Connect Supabase to keep them."} · Ignav key:{" "}
-        <strong>{data.hasApiKey ? "set" : "missing"}</strong>
+        <strong>{data.hasApiKey ? "set" : "missing"}</strong> · Compensair token: <strong>{data.hasCompensair ? "set" : "missing"}</strong>
       </p>
       <AdminKeyBox onSet={() => setKeyVersion((v) => v + 1)} />
       <FareRequests key={keyVersion} />
       <BookingClicks key={`clicks-${keyVersion}`} />
+      <CompensairClaims key={`claims-${keyVersion}`} />
       {TABLES.map((t) => <TableEditor key={t.table} spec={t} initial={data.config[t.key] as unknown as Row[]} />)}
       <SettingsEditor initial={data.config.settings} />
     </div>
