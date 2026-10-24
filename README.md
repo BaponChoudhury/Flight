@@ -101,6 +101,18 @@ The client is generated from `spec/ignav-openapi.json`. To regenerate: `npm run 
 - **Time:** total = out (from the UK airport) + back (to leaving the UK airport). The way back adds `uk_arrival_exit_mins` (60) to get through the UK airport.
 - **Typical call count:** 3 UK origins → 3 + 24 + ≤16 + ≤8 ≈ 50 calls. Real test: 49 calls, 270 options.
 
+## Filtering results
+
+The results page has a filter panel: down the left on wide screens, behind a "Filters" button on phones. Every filter works on the results already loaded, so none of them runs a new search or costs an API call.
+
+- **Cancellation:** refundable tickets only (see the Aviasales section below).
+- **Tickets:** one ticket with protected connections, or separate tickets.
+- **Stops on the way out**, **price** and **journey time** (sliders up to a maximum).
+- **Leave the UK** and **Arrive in India:** morning, afternoon, evening or night, in local time.
+- **UK airport**, **airlines** and **connecting airports:** untick one to hide every trip that uses it. Each shows the cheapest price using it.
+- **More:** bag price confirmed, no excess baggage risk, no terminal change, no overnight stop.
+- "Showing X of Y" and **Reset filters**. Filters reset on each new search.
+
 ## Getting to the airport (train, coach or cab)
 
 There's no free API for live UK train or coach prices, or for taxi quotes (Trainline and FlixBus offer APIs only to commercial partners). So you look them up and enter them:
@@ -147,7 +159,7 @@ How it works:
   - fares the seller marks as self-transfer ("virtual interline") are treated like Ignav's own combinations: split where the trip enters India, with the same connection checks and warning;
   - so are fares that mix airlines sharing no alliance, e.g. Ryanair + Azerbaijan Airlines, because sellers don't always flag them.
 - **Refund and change rules:** each fare card shows "Refundable before departure (fee about £X)" or "Non-refundable", plus whether date changes are allowed. A fare only counts as refundable when every flight on it says so. Trips where every ticket is refundable get a **Refundable** badge.
-- **"Refundable tickets only"** (results page): a filter, not a new search. For each trip Aviasales returns, the search keeps the cheapest fare and, when that one isn't refundable, the cheapest refundable fare too. Identical trips are shown once at the cheapest price, with the refundable fare attached. The filter swaps each result for its refundable fare and hides results that have none. Split tickets with an Ignav flight never qualify, since Ignav has no refund data. A refundable fare also skips the lower-price check, because a cheaper fare for the same flights may not be refundable.
+- **"Refundable tickets only"** (results filter panel): a filter, not a new search. For each trip Aviasales returns, the search keeps the cheapest fare and, when that one isn't refundable, the cheapest refundable fare too. Identical trips are shown once at the cheapest price, with the refundable fare attached. The filter swaps each result for its refundable fare and hides results that have none. Split tickets with an Ignav flight never qualify, since Ignav has no refund data. A refundable fare also skips the lower-price check, because a cheaper fare for the same flights may not be refundable.
 - The search API still accepts `refundableOnly: true`, which searches Aviasales refundable fares only and skips Ignav. The app no longer sends it.
 - **Booking links:** fetched only when the user taps **Get booking links**, as the API terms require. Prices and links last 15 minutes, so Aviasales results are cached for 10 minutes, and an expired link asks the user to search again.
 - **User details:** each search sends the user's own IP (from `x-forwarded-for`) and the site's host, as the API requires. The cache stores only the search itself, never the IP.

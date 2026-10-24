@@ -14,12 +14,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en">
       <body className="antialiased">
         <header className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-          <nav className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
+          <nav className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3 lg:max-w-6xl">
             <Link href="/" className="text-lg font-bold">Flights to India</Link>
             <Link href="/admin" className="text-sm text-sky-700 underline dark:text-sky-400">Admin</Link>
           </nav>
         </header>
-        <main className="mx-auto max-w-2xl px-4 py-6">{children}</main>
+        <main className="mx-auto max-w-2xl px-4 py-6 lg:max-w-6xl">{children}</main>
       </body>
     </html>
   );

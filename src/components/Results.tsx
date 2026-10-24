@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { applyGround, groundChoices, pickGround, rankOptions, refundableView, type GroundChoice } from "@/lib/engine/rules";
 import { formatDuration, formatLocalDay, formatLocalTime } from "@/lib/engine/time";
 import type { Badge, BookingLink, FareTerms, FlightLeg, ProviderId, RouteOption, SearchRequest, SearchResponse, Settings } from "@/lib/types";
+import { activeCount, applyFilters, facetsOf, NO_FILTERS, type Filters } from "@/lib/filters";
+import { FilterPanel } from "./FilterPanel";
 import { EMPTY_DRAFT, GroundPanel, toInput, type GroundDraft } from "./GroundPanel";
 
 const gbp2 = (n: number) => `£${n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -391,7 +393,10 @@ function initialDrafts(data: SearchResponse, req: SearchRequest): Record<string,
 
 export function Results({ data, req, settings }: { data: SearchResponse; req: SearchRequest; settings: Settings }) {
   const [priceWeight, setPriceWeight] = useState(0.6);
-  const [refundableOnly, setRefundableOnly] = useState(false);
+  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  useEffect(() => setFilters(NO_FILTERS), [data]);
+  const refundableOnly = filters.refundableOnly;
   const pax = req.adults + req.children;
   const airports = useMemo(() => [...new Set(data.options.map((o) => o.ukAirport))].sort(), [data.options]);
   const [drafts, setDrafts] = useState<Record<string, GroundDraft>>({});
@@ -425,7 +430,9 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
       }),
     [shown, drafts, pax, settings.uk_airport_arrival_mins, settings.uk_arrival_exit_mins],
   );
-  const ranked = useMemo(() => rankOptions(options, priceWeight, settings), [options, priceWeight, settings]);
+  const facets = useMemo(() => (options.length ? facetsOf(options) : null), [options]);
+  const filtered = useMemo(() => applyFilters(options, filters, data.airportTz), [options, filters, data.airportTz]);
+  const ranked = useMemo(() => rankOptions(filtered, priceWeight, settings), [filtered, priceWeight, settings]);
   const tz = data.airportTz;
   const s = data.stats;
   const asOf = data.options.map((o) => o.priceAsOf).sort()[0];
@@ -456,42 +463,60 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
       )}
 
       {data.options.length > 0 && (
-        <>
-          <GroundPanel originArea={req.originArea} airports={airports} drafts={drafts} pax={pax} onChange={updateDraft} returnTrip={!!req.returnDate} />
-
-          <label className="flex items-start gap-2 text-base">
-            <input type="checkbox" className="mt-1 h-5 w-5" checked={refundableOnly} onChange={(e) => setRefundableOnly(e.target.checked)} />
-            <span>
-              Refundable tickets only
-              <span className="block text-sm text-slate-600 dark:text-slate-400">
-                {refundableOnly
-                  ? `${options.length} refundable option${options.length === 1 ? "" : "s"}. Refund rules come from Aviasales; split tickets with an Ignav flight can't be checked.`
-                  : "Money back if you cancel before departure (a fee may apply). Usually pricier."}
-              </span>
-            </span>
-          </label>
-
-          <div className="grid gap-3">
-            {ranked.cheapest && <OptionCard o={ranked.cheapest} tz={tz} req={req} highlight="Cheapest" groundAlts={alts[ranked.cheapest.ukAirport] ?? []} />}
-            {ranked.fastest && ranked.fastest !== ranked.cheapest && <OptionCard o={ranked.fastest} tz={tz} req={req} highlight="Fastest" groundAlts={alts[ranked.fastest.ukAirport] ?? []} />}
-          </div>
-
-          <div>
-            <label htmlFor="weight" className="block text-sm font-medium">
-              Best value: {priceWeight >= 0.5 ? `mostly price (${Math.round(priceWeight * 100)}%)` : `mostly time (${Math.round((1 - priceWeight) * 100)}%)`}
-            </label>
-            <div className="flex items-center gap-2 text-sm">
-              <span>Time</span>
-              <input id="weight" type="range" min={0} max={1} step={0.05} value={priceWeight} onChange={(e) => setPriceWeight(Number(e.target.value))} className="flex-1" />
-              <span>Price</span>
+        <div className="grid gap-4 lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-start">
+          <aside className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+            <button
+              type="button"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-left font-medium lg:hidden dark:border-slate-600 dark:bg-slate-900"
+              aria-expanded={filtersOpen}
+              onClick={() => setFiltersOpen((x) => !x)}
+            >
+              {filtersOpen ? "Hide filters" : "Filters"}
+              {activeCount(filters) > 0 && ` (${activeCount(filters)} on)`} · {filtered.length} of {data.options.length}
+            </button>
+            <div className={`${filtersOpen ? "mt-2 block" : "hidden"} rounded-lg border border-slate-200 bg-white p-3 lg:mt-0 lg:block dark:border-slate-700 dark:bg-slate-900`}>
+              {facets && <FilterPanel filters={filters} facets={facets} onChange={setFilters} shownCount={filtered.length} totalCount={data.options.length} />}
             </div>
-          </div>
+          </aside>
 
-          <h2 className="text-lg font-semibold">Top 10 by best value</h2>
-          <div className="grid gap-3">
-            {ranked.top.map((o, i) => <OptionCard key={o.id} o={o} tz={tz} req={req} highlight={i === 0 ? "Best value" : undefined} groundAlts={alts[o.ukAirport] ?? []} />)}
+          <div className="min-w-0 space-y-4">
+            <GroundPanel originArea={req.originArea} airports={airports} drafts={drafts} pax={pax} onChange={updateDraft} returnTrip={!!req.returnDate} />
+
+            {filtered.length === 0 ? (
+              <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-900/30 dark:text-amber-100">
+                <p>
+                  {refundableOnly && !options.length
+                    ? "No refundable fares found. Refund rules come from Aviasales only, and split tickets with an Ignav flight can't be checked."
+                    : "No results match these filters."}
+                </p>
+                <button type="button" className="mt-1 underline" onClick={() => setFilters(NO_FILTERS)}>Reset filters</button>
+              </div>
+            ) : (
+              <>
+                <div className="grid gap-3">
+                  {ranked.cheapest && <OptionCard o={ranked.cheapest} tz={tz} req={req} highlight="Cheapest" groundAlts={alts[ranked.cheapest.ukAirport] ?? []} />}
+                  {ranked.fastest && ranked.fastest !== ranked.cheapest && <OptionCard o={ranked.fastest} tz={tz} req={req} highlight="Fastest" groundAlts={alts[ranked.fastest.ukAirport] ?? []} />}
+                </div>
+
+                <div>
+                  <label htmlFor="weight" className="block text-sm font-medium">
+                    Best value: {priceWeight >= 0.5 ? `mostly price (${Math.round(priceWeight * 100)}%)` : `mostly time (${Math.round((1 - priceWeight) * 100)}%)`}
+                  </label>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span>Time</span>
+                    <input id="weight" type="range" min={0} max={1} step={0.05} value={priceWeight} onChange={(e) => setPriceWeight(Number(e.target.value))} className="flex-1" />
+                    <span>Price</span>
+                  </div>
+                </div>
+
+                <h2 className="text-lg font-semibold">Top 10 by best value</h2>
+                <div className="grid gap-3">
+                  {ranked.top.map((o, i) => <OptionCard key={o.id} o={o} tz={tz} req={req} highlight={i === 0 ? "Best value" : undefined} groundAlts={alts[o.ukAirport] ?? []} />)}
+                </div>
+              </>
+            )}
           </div>
-        </>
+        </div>
       )}
     </section>
   );
