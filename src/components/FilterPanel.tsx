@@ -8,9 +8,9 @@ const box = "h-4 w-4 shrink-0";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <fieldset className="border-t border-slate-200 pt-3 dark:border-slate-700">
-      <legend className="mb-1 text-sm font-semibold">{title}</legend>
-      <div className="space-y-1 text-sm">{children}</div>
+    <fieldset className="border-t border-slate-100 pt-4 dark:border-slate-800">
+      <legend className="mb-2 text-sm font-bold">{title}</legend>
+      <div className="space-y-1.5 text-sm text-slate-700 dark:text-slate-300">{children}</div>
     </fieldset>
   );
 }
@@ -39,14 +39,14 @@ function ShowList({ facets, hidden, onChange, limit = 8 }: { facets: Facet[]; hi
     <>
       {facets.length > 1 && (
         <div className="flex gap-3 text-xs">
-          <button type="button" className="text-sky-700 underline dark:text-sky-400" onClick={() => onChange([])}>All</button>
-          <button type="button" className="text-sky-700 underline dark:text-sky-400" onClick={() => onChange(facets.map((f) => f.code))}>None</button>
+          <button type="button" className="font-semibold text-brand-600 hover:underline dark:text-brand-300" onClick={() => onChange([])}>All</button>
+          <button type="button" className="font-semibold text-brand-600 hover:underline dark:text-brand-300" onClick={() => onChange(facets.map((f) => f.code))}>None</button>
         </div>
       )}
       {rows(facets.slice(0, limit))}
       {facets.length > limit && (
         <details>
-          <summary className="cursor-pointer text-xs text-sky-700 dark:text-sky-400">{facets.length - limit} more</summary>
+          <summary className="cursor-pointer text-xs font-semibold text-brand-600 dark:text-brand-300">{facets.length - limit} more</summary>
           <div className="mt-1 space-y-1">{rows(facets.slice(limit))}</div>
         </details>
       )}
@@ -83,7 +83,7 @@ export function FilterPanel({
         <p className="text-sm">
           Showing <strong>{shownCount}</strong> of {totalCount}
         </p>
-        <button type="button" className="text-sm text-sky-700 underline dark:text-sky-400" onClick={() => onChange(NO_FILTERS)}>
+        <button type="button" className="text-sm font-semibold text-brand-600 hover:underline dark:text-brand-300" onClick={() => onChange(NO_FILTERS)}>
           Reset filters
         </button>
       </div>

@@ -1,5 +1,6 @@
 // Results-page filters: worked out from the options already returned, so no new search.
 
+import { airlineName } from "@/lib/airline-names";
 import { localHour } from "@/lib/engine/time";
 import type { NormalisedSegment, RouteOption } from "@/lib/types";
 
@@ -134,18 +135,16 @@ function facet(options: RouteOption[], codesOf: (o: RouteOption) => string[], la
 
 /** The choices each filter offers, from the options before filtering. */
 export function facetsOf(options: RouteOption[]): Facets {
-  const airlineName = new Map<string, string>();
+  const names = new Map<string, string>();
   for (const o of options)
     for (const l of [...o.legs, ...(o.back?.legs ?? [])])
-      for (const s of l.itinerary.segments) {
-        const name = s.carrierName ?? (l.itinerary.carrier === s.carrier ? l.itinerary.carrierName : null);
-        if (s.carrier && name && !airlineName.has(s.carrier)) airlineName.set(s.carrier, name);
-      }
+      for (const s of l.itinerary.segments)
+        if (s.carrier && !names.has(s.carrier)) names.set(s.carrier, airlineName(s.carrier, l.itinerary.carrier === s.carrier ? l.itinerary.carrierName : null));
   const prices = options.map((o) => o.costs.total);
   const mins = options.map((o) => o.totalMins);
   return {
     ukAirports: facet(options, (o) => [o.ukAirport], (c) => c),
-    airlines: facet(options, airlinesOf, (c) => (airlineName.has(c) ? `${airlineName.get(c)} (${c})` : c)),
+    airlines: facet(options, airlinesOf, (c) => (names.has(c) && names.get(c) !== c ? `${names.get(c)} (${c})` : c)),
     via: facet(options, viaOf, (c) => c),
     stops: [...new Set(options.map(stopsOf))].sort((a, b) => a - b),
     price: { min: Math.floor(Math.min(...prices)), max: Math.ceil(Math.max(...prices)) },

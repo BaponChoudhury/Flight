@@ -111,7 +111,7 @@ function FareRequests() {
                     {q.uk_price_gbp != null && ` (UK price £${q.uk_price_gbp.toFixed(2)})`} · market <strong>{q.market}</strong> · {q.provider_name}
                     {q.fare_name && ` · ${q.fare_name}`} · {q.local_amount.toLocaleString("en-GB")} {q.local_currency} at {q.applied_rate.toFixed(4)} (mid {q.mid_rate.toFixed(4)})
                   </p>
-                  <a href={q.booking_url} target="_blank" rel="noopener noreferrer" className="text-sky-700 underline dark:text-sky-400">Open seller ↗</a>
+                  <a href={q.booking_url} target="_blank" rel="noopener noreferrer" className="text-brand-600 underline dark:text-brand-300">Open seller ↗</a>
                 </>
               ) : (
                 <p>Quote missing.</p>
@@ -141,7 +141,7 @@ function AdminKeyBox({ onSet }: { onSet: () => void }) {
       }}
     >
       <input type="password" placeholder="Admin password" className={input} value={value} onChange={(e) => setValue(e.target.value)} aria-label="Admin password" />
-      <button type="submit" className="rounded bg-sky-700 px-3 py-1 text-sm font-semibold text-white">Unlock</button>
+      <button type="submit" className="rounded bg-brand-600 px-3 py-1 text-sm font-semibold text-white">Unlock</button>
     </form>
   );
 }
@@ -195,7 +195,7 @@ function TableEditor({ spec, initial }: { spec: (typeof TABLES)[number]; initial
       </div>
       <div className="mt-2 flex items-center gap-3">
         <button type="button" className="rounded border border-slate-300 px-3 py-1 text-sm dark:border-slate-600" onClick={() => setRows([...rows, { ...spec.blank }])}>Add row</button>
-        <button type="button" className="rounded bg-sky-700 px-3 py-1 text-sm font-semibold text-white" onClick={save}>Save</button>
+        <button type="button" className="rounded bg-brand-600 px-3 py-1 text-sm font-semibold text-white" onClick={save}>Save</button>
         <span className="text-sm">{status}</span>
       </div>
     </details>
@@ -225,7 +225,7 @@ function SettingsEditor({ initial }: { initial: AppConfig["settings"] }) {
       </p>
       <textarea className={`${input} h-96 font-mono`} value={text} onChange={(e) => setText(e.target.value)} />
       <div className="mt-2 flex items-center gap-3">
-        <button type="button" className="rounded bg-sky-700 px-3 py-1 text-sm font-semibold text-white" onClick={save}>Save</button>
+        <button type="button" className="rounded bg-brand-600 px-3 py-1 text-sm font-semibold text-white" onClick={save}>Save</button>
         <span className="text-sm">{status}</span>
       </div>
     </details>
