@@ -19,6 +19,7 @@ export function AirportPicker({
   onChange,
   onPick,
   placeholder,
+  inputClassName = field,
 }: {
   id: string;
   country?: string;
@@ -27,6 +28,8 @@ export function AirportPicker({
   /** Multi-select mode: called with each chosen airport, and the box clears for the next one. */
   onPick?: (airport: AirportRecord) => void;
   placeholder?: string;
+  /** Styles for the text box (e.g. borderless inside a larger field). */
+  inputClassName?: string;
 }) {
   const [text, setText] = useState(initial ? airportLabel(initial) : "");
   const [results, setResults] = useState<AirportRecord[]>([]);
@@ -99,7 +102,7 @@ export function AirportPicker({
         aria-controls={`${id}-list`}
         aria-autocomplete="list"
         autoComplete="off"
-        className={field}
+        className={inputClassName}
         placeholder={placeholder}
         value={text}
         onChange={(e) => edit(e.target.value)}
@@ -127,20 +130,23 @@ export function AirportPicker({
         }}
       />
       {open && results.length > 0 && (
-        <ul id={`${id}-list`} role="listbox" className="absolute z-10 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-slate-300 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-800">
+        <ul id={`${id}-list`} role="listbox" className="absolute left-0 right-0 z-30 mt-2 max-h-80 min-w-[16rem] overflow-auto rounded-xl bg-white py-1 shadow-2xl ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
           {results.map((a, i) => (
             <li
               key={a.code}
               role="option"
               aria-selected={i === active}
-              className={`cursor-pointer px-3 py-2 ${i === active ? "bg-sky-100 dark:bg-sky-900/50" : ""}`}
+              className={`cursor-pointer px-3 py-2 ${i === active ? "bg-brand-50 dark:bg-brand-900/40" : ""}`}
               onMouseDown={(e) => {
                 e.preventDefault();
                 choose(a);
               }}
             >
-              <span className="font-medium">{a.city}</span> <span className="text-slate-500">({a.code})</span>
-              <span className="block text-xs text-slate-500">{a.name}</span>
+              <span className="flex items-center justify-between gap-2">
+                <span className="font-medium text-slate-900 dark:text-white">{a.city}</span>
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-200">{a.code}</span>
+              </span>
+              <span className="block truncate text-xs text-slate-500">{a.name}</span>
             </li>
           ))}
         </ul>

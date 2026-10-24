@@ -2,6 +2,7 @@
 
 import { groundChoices, pickGround, type GroundInput, type GroundMode } from "@/lib/engine/rules";
 import { groundLinks, type GroundLink } from "@/lib/ground-links";
+import { Icon } from "./ui";
 
 /** Raw text the user typed, per UK airport. Kept as strings so inputs can be blank. */
 export interface GroundDraft {
@@ -24,7 +25,7 @@ export function toInput(d: GroundDraft): GroundInput {
   return { trainPerPerson: num(d.trainPerPerson), coachPerPerson: num(d.coachPerPerson), cabTotal: num(d.cabTotal), use: d.use };
 }
 
-const field = "w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-base dark:border-slate-600 dark:bg-slate-800";
+const field = "w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-base focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/15 dark:border-slate-600 dark:bg-slate-800";
 const gbp = (n: number) => `£${n.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`;
 const LABEL: Record<GroundMode, string> = { train: "Train", coach: "Coach", cab: "Cab" };
 
@@ -38,7 +39,7 @@ function Links({ links }: { links: GroundLink[] }) {
   return (
     <span className="flex flex-col gap-0.5">
       {links.map((l) => (
-        <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-sky-700 underline dark:text-sky-400">
+        <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-300">
           {l.label} ↗
         </a>
       ))}
@@ -62,10 +63,25 @@ export function GroundPanel({
   returnTrip?: boolean;
 }) {
   const th = "px-1.5 py-1.5 text-left align-bottom font-medium";
+  const added = airports.filter((a) => groundChoices(toInput({ ...EMPTY_DRAFT, ...drafts[a] }), pax).length > 0);
   return (
-    <details open className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
-      <summary className="cursor-pointer font-semibold">Getting to the airport{originArea ? ` from ${originArea}` : ""}</summary>
-      <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+    <details className="group rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/80 dark:bg-slate-900 dark:ring-slate-800">
+      <summary className="flex cursor-pointer list-none items-center gap-3 p-4 [&::-webkit-details-marker]:hidden">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300">
+          <Icon name="train" className="h-5 w-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold">Getting to the airport{originArea ? ` from ${originArea}` : ""}</span>
+          <span className="block text-sm text-slate-600 dark:text-slate-400">
+            {added.length
+              ? `Added for ${added.join(", ")} — included in the prices below`
+              : "Add your train, coach or cab fare to see the full trip cost"}
+          </span>
+        </span>
+        <Icon name="chevronDown" className="h-5 w-5 shrink-0 text-slate-400 transition group-open:rotate-180" />
+      </summary>
+      <div className="border-t border-slate-100 p-4 pt-3 dark:border-slate-800">
+      <p className="text-sm text-slate-600 dark:text-slate-400">
         Tap a link to check the price, then enter it here. Results update straight away — no new search needed.
         {returnTrip && " Enter one-way prices — we count them twice for the return."}
       </p>
@@ -129,6 +145,7 @@ export function GroundPanel({
           })}
         </tbody>
       </table>
+      </div>
     </details>
   );
 }
