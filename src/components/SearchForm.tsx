@@ -23,10 +23,10 @@ const ukName = (code: string) => UK_AIRPORTS.find((a) => a.code === code)?.name 
 const DEFAULT_AIRPORTS = [LONDON, "MAN", "BHX"];
 
 /** A labelled field box with an icon, the way big travel sites lay out their search bar. */
-function Field({ icon, label, htmlFor, children, className = "" }: { icon: IconName; label: string; htmlFor?: string; children: React.ReactNode; className?: string }) {
+function Field({ icon, label, htmlFor, children, className = "" }: { icon?: IconName; label: string; htmlFor?: string; children: React.ReactNode; className?: string }) {
   return (
     <div className={`${box} ${className}`}>
-      <Icon name={icon} className="h-5 w-5 shrink-0 text-slate-400" />
+      {icon && <Icon name={icon} className="h-5 w-5 shrink-0 text-slate-400" />}
       <div className="min-w-0 flex-1 py-2">
         <label htmlFor={htmlFor} className={boxLabel}>{label}</label>
         {children}
@@ -156,6 +156,7 @@ export function SearchForm({
   const kmOf = (code: string) => located?.airports.find((a) => a.code === code)?.km;
   const addable = UK_AIRPORTS.filter((a) => !shown.includes(a.code));
   const travellers = req.adults + req.children + (req.infants ?? 0);
+  const paxText = `${travellers} ${travellers === 1 ? "person" : "people"} · ${req.bags} bag${req.bags === 1 ? "" : "s"}`;
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -182,22 +183,88 @@ export function SearchForm({
       <div className="flex flex-wrap items-center gap-2">
         <Segmented label="Trip type" value={tripType} onChange={setTripType} options={[["oneway", "One-way"], ["return", "Return"]]} />
         <Segmented label="Where from" value={fromMode} onChange={setFromMode} options={[["uk", "From the UK"], ["any", "Any airport"]]} />
-        <div className="relative" ref={paxRef}>
+      </div>
+
+      <div className={`mt-4 grid gap-2 sm:grid-cols-2 ${tripType === "return" ? "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_9.5rem_9.5rem_13.5rem_auto]" : "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_10rem_13.5rem_auto]"}`}>
+        {fromMode === "uk" ? (
+          <Field icon="pin" label="From" htmlFor="from">
+            <div className="flex items-center gap-2">
+              <input
+                id="from"
+                className={bare}
+                placeholder="UK town or postcode"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                onBlur={findAirports}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    findAirports();
+                  }
+                }}
+                autoComplete="address-level2"
+              />
+              <button
+                type="button"
+                onClick={findAirports}
+                aria-label="Find airports"
+                title="Find airports near here"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-brand-600 hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-900/30"
+              >
+                {locating ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <Icon name="search" className="h-4 w-4" strokeWidth={2.2} />}
+              </button>
+            </div>
+          </Field>
+        ) : (
+          <Field icon="takeoff" label="From (up to 5 airports)" htmlFor="from-any">
+            <AirportPicker
+              id="from-any"
+              inputClassName={bare}
+              placeholder="City or airport, e.g. Frankfurt"
+              onPick={(a) => {
+                setPicked((p) => (p.some((x) => x.code === a.code) || p.length >= 5 ? p : [...p, a]));
+              }}
+            />
+          </Field>
+        )}
+
+        <Field icon="landing" label="To" htmlFor="to">
+          <AirportPicker
+            id="to"
+            country="IN"
+            inputClassName={bare}
+            placeholder="City or airport in India"
+            initial={{ code: "GAU", city: "Guwahati", name: "Lokpriya Gopinath Bordoloi International Airport", country: "IN", lat: 0, lon: 0 }}
+            onChange={setDest}
+          />
+        </Field>
+
+        <Field label="Depart" htmlFor="date">
+          <input id="date" type="date" className={bare} value={req.date} onChange={(e) => set("date", e.target.value)} required />
+        </Field>
+
+        {tripType === "return" && (
+          <Field label="Return" htmlFor="ret">
+            <input id="ret" type="date" className={bare} min={req.date} value={returnDate} onChange={(e) => setReturnDate(e.target.value)} required />
+          </Field>
+        )}
+
+        <div ref={paxRef} className={`relative ${tripType === "return" ? "sm:col-span-2 lg:col-span-1" : ""}`}>
           <button
             type="button"
             aria-expanded={paxOpen}
+            aria-label={`Travellers and bags: ${paxText}`}
             onClick={() => setPaxOpen((o) => !o)}
-            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+            className={`${box} w-full text-left`}
           >
-            <Icon name="user" className="h-4 w-4" />
-            {travellers} traveller{travellers === 1 ? "" : "s"}
-            <span className="text-slate-400">·</span>
-            <Icon name="bag" className="h-4 w-4" />
-            {req.bags} bag{req.bags === 1 ? "" : "s"} each
-            <Icon name="chevronDown" className="h-4 w-4 text-slate-400" />
+            <Icon name="user" className="h-5 w-5 shrink-0 text-slate-400" />
+            <span className="min-w-0 flex-1 py-2">
+              <span className={boxLabel}>Travellers &amp; bags</span>
+              <span className="block truncate text-base font-semibold text-slate-900 dark:text-white">{paxText}</span>
+            </span>
           </button>
           {paxOpen && (
-            <div className="absolute left-0 z-40 mt-2 w-72 divide-y divide-slate-100 rounded-2xl bg-white p-4 shadow-2xl ring-1 ring-slate-200 dark:divide-slate-800 dark:bg-slate-900 dark:ring-slate-700">
+            <div className="absolute left-0 right-0 top-full z-40 mt-2 divide-y sm:left-auto sm:w-72 divide-slate-100 rounded-2xl bg-white p-4 shadow-2xl ring-1 ring-slate-200 dark:divide-slate-800 dark:bg-slate-900 dark:ring-slate-700">
               <Stepper label="Adults" hint="12 and over" value={req.adults} min={1} max={9} onChange={(n) => setReq((r) => ({ ...r, adults: n, infants: Math.min(r.infants ?? 0, n) }))} />
               <Stepper label="Children" hint="2–11" value={req.children} min={0} max={8} onChange={(n) => set("children", n)} />
               <Stepper label="Infants" hint="Under 2, on your lap" value={req.infants ?? 0} min={0} max={req.adults} onChange={(n) => set("infants", n)} />
@@ -210,70 +277,11 @@ export function SearchForm({
             </div>
           )}
         </div>
-      </div>
-
-      <div className={`mt-4 grid gap-2 sm:grid-cols-2 ${tripType === "return" ? "lg:grid-cols-[1.3fr_1.3fr_1fr_1fr_auto]" : "lg:grid-cols-[1.4fr_1.4fr_1fr_auto]"}`}>
-        {fromMode === "uk" ? (
-          <Field icon="pin" label="From — UK town or postcode" htmlFor="from">
-            <div className="flex items-center gap-2">
-              <input
-                id="from"
-                className={bare}
-                placeholder="e.g. Stafford or ST16 2AA"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-                onBlur={findAirports}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    findAirports();
-                  }
-                }}
-                autoComplete="address-level2"
-              />
-              <button type="button" onClick={findAirports} className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-brand-600 hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-900/30">
-                {locating ? "…" : "Find airports"}
-              </button>
-            </div>
-          </Field>
-        ) : (
-          <Field icon="takeoff" label="From — any airport (up to 5)" htmlFor="from-any">
-            <AirportPicker
-              id="from-any"
-              inputClassName={bare}
-              placeholder="City or airport, e.g. Frankfurt"
-              onPick={(a) => {
-                setPicked((p) => (p.some((x) => x.code === a.code) || p.length >= 5 ? p : [...p, a]));
-              }}
-            />
-          </Field>
-        )}
-
-        <Field icon="landing" label="To — airport in India" htmlFor="to">
-          <AirportPicker
-            id="to"
-            country="IN"
-            inputClassName={bare}
-            placeholder="City, e.g. Guwahati"
-            initial={{ code: "GAU", city: "Guwahati", name: "Lokpriya Gopinath Bordoloi International Airport", country: "IN", lat: 0, lon: 0 }}
-            onChange={setDest}
-          />
-        </Field>
-
-        <Field icon="calendar" label="Depart" htmlFor="date">
-          <input id="date" type="date" className={bare} value={req.date} onChange={(e) => set("date", e.target.value)} required />
-        </Field>
-
-        {tripType === "return" && (
-          <Field icon="calendar" label="Return" htmlFor="ret">
-            <input id="ret" type="date" className={bare} min={req.date} value={returnDate} onChange={(e) => setReturnDate(e.target.value)} required />
-          </Field>
-        )}
 
         <button
           type="submit"
           disabled={busy || locating}
-          className="flex min-h-[3.75rem] items-center justify-center gap-2 rounded-xl bg-brand-600 px-7 text-base font-bold text-white shadow-lg shadow-brand-600/25 transition hover:bg-brand-700 disabled:opacity-60 sm:col-span-2 lg:col-span-1"
+          className="flex min-h-[3.75rem] items-center justify-center gap-2 rounded-xl bg-brand-600 px-6 text-base font-bold text-white shadow-lg shadow-brand-600/25 transition hover:bg-brand-700 disabled:opacity-60 sm:col-span-2 lg:col-span-1"
         >
           <Icon name="search" className="h-5 w-5" strokeWidth={2.2} />
           {busy ? "Searching…" : "Search"}
