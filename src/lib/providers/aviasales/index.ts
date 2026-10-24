@@ -368,6 +368,20 @@ export function aviasalesConfigured(): boolean {
   return !!process.env.TRAVELPAYOUTS_TOKEN && !!process.env.TRAVELPAYOUTS_MARKER;
 }
 
+/**
+ * A fresh SubID for one booking link: letters and digits only (Travelpayouts rejects
+ * hyphens), short, and unique enough to match a booking back to the click.
+ */
+export function newSubId(now = Date.now(), random = Math.random): string {
+  const rand = Array.from({ length: 4 }, () => Math.floor(random() * 36).toString(36)).join("");
+  return `c${now.toString(36)}${rand}`;
+}
+
+/** Travelpayouts reads "partnerId.subId": the SubID goes after the partner ID, separated by a dot. */
+export function markerWithSubId(marker: string, subId?: string): string {
+  return subId && /^[A-Za-z0-9_]+$/.test(subId) ? `${marker}.${subId}` : marker;
+}
+
 /** The search body without user details or signature: also the cache identity (no IPs in the cache table). */
 function searchKey(directions: { origin: string; destination: string; date: string }[], f: SearchFilters) {
   return {
@@ -421,10 +435,10 @@ export function createAviasalesProvider(client: AviasalesClient): FlightProvider
     },
 
     // Only ever called when the user taps "Get booking links" (the API terms forbid fetching them in bulk).
-    async getBookingLinks(providerRef, _filters, ctx) {
+    async getBookingLinks(providerRef, _filters, ctx, _key, subId) {
       const ref = parseRef(providerRef);
       if (!ref) throw new ProviderError("Not an Aviasales fare", 400);
-      const marker = process.env.TRAVELPAYOUTS_MARKER ?? "";
+      const marker = markerWithSubId(process.env.TRAVELPAYOUTS_MARKER ?? "", subId);
       const path = `/v1/flight_searches/${encodeURIComponent(ref.searchId)}/clicks/${encodeURIComponent(ref.url)}.json?marker=${encodeURIComponent(marker)}`;
       let raw: { url?: string; method?: string };
       try {

@@ -137,7 +137,7 @@ function JourneyRow({ legs, tz, hub, separate }: { legs: FlightLeg[]; tz: Tz; hu
   );
 }
 
-function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest }) {
+function LegBlock({ leg, tz, req, searchId }: { leg: FlightLeg; tz: Tz; req: SearchRequest; searchId: string }) {
   const it = leg.itinerary;
   const [links, setLinks] = useState<BookingLink[] | null>(null);
   const [lower, setLower] = useState<LowerPriceView | null>(null);
@@ -154,6 +154,7 @@ function LegBlock({ leg, tz, req }: { leg: FlightLeg; tz: Tz; req: SearchRequest
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         providerRef: it.providerRef,
+        searchId,
         bookingKey: it.bookingKey,
         priceGbp: it.price.totalGbp,
         refundable: it.fareTerms?.refundable === true,
@@ -373,7 +374,7 @@ const LABEL_STYLE: Record<string, string> = {
   Best: "bg-brand-600 text-white",
 };
 
-function ResultCard({ o, tz, req, labels, groundAlts }: { o: RouteOption; tz: Tz; req: SearchRequest; labels: string[]; groundAlts: GroundChoice[] }) {
+function ResultCard({ o, tz, req, labels, groundAlts, searchId }: { o: RouteOption; tz: Tz; req: SearchRequest; labels: string[]; groundAlts: GroundChoice[]; searchId: string }) {
   const other = groundAlts.find((g) => g.mode !== o.ground.mode);
   const [open, setOpen] = useState(false);
   const destTz = tz[o.dest] ?? "Asia/Kolkata";
@@ -457,9 +458,9 @@ function ResultCard({ o, tz, req, labels, groundAlts }: { o: RouteOption; tz: Tz
                     </>
                   )}
                 </PointStep>
-                <LegBlock leg={o.legs[0]} tz={tz} req={req} />
+                <LegBlock leg={o.legs[0]} tz={tz} req={req} searchId={searchId} />
                 {c && <ConnectionStep c={c} />}
-                {o.legs.slice(1).map((l, i) => <LegBlock key={`${l.itinerary.providerRef}-${i}`} leg={l} tz={tz} req={req} />)}
+                {o.legs.slice(1).map((l, i) => <LegBlock key={`${l.itinerary.providerRef}-${i}`} leg={l} tz={tz} req={req} searchId={searchId} />)}
                 <PointStep icon="pin" tone="emerald" title={`Arrive ${o.dest} ${when(o.arriveUtc, destTz)}`} />
               </ol>
 
@@ -467,9 +468,9 @@ function ResultCard({ o, tz, req, labels, groundAlts }: { o: RouteOption; tz: Tz
                 <>
                   <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500">Return</h3>
                   <ol className={timeline}>
-                    <LegBlock leg={o.back.legs[0]} tz={tz} req={req} />
+                    <LegBlock leg={o.back.legs[0]} tz={tz} req={req} searchId={searchId} />
                     {o.back.connection && <ConnectionStep c={o.back.connection} />}
-                    {o.back.legs.slice(1).map((l, i) => <LegBlock key={`back-${l.itinerary.providerRef}-${i}`} leg={l} tz={tz} req={req} />)}
+                    {o.back.legs.slice(1).map((l, i) => <LegBlock key={`back-${l.itinerary.providerRef}-${i}`} leg={l} tz={tz} req={req} searchId={searchId} />)}
                     <PointStep icon="home" title={`Out of the airport ${when(o.back.arriveHomeUtc, backHomeTz)}`}>
                       {o.ground.mode === "not set"
                         ? `About 1h to get through ${o.back.legs[o.back.legs.length - 1].itinerary.dest} airport; travel home not added yet.`
@@ -712,7 +713,7 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
 
                 <div className="space-y-3">
                   {sorted.slice(0, visible).map((o) => (
-                    <ResultCard key={o.id} o={o} tz={tz} req={req} labels={labelsFor(o)} groundAlts={alts[o.ukAirport] ?? []} />
+                    <ResultCard key={o.id} o={o} tz={tz} req={req} labels={labelsFor(o)} groundAlts={alts[o.ukAirport] ?? []} searchId={data.searchId} />
                   ))}
                 </div>
                 {sorted.length > visible && (
