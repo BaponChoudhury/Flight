@@ -10,6 +10,7 @@ import type {
   GroundAccess,
   HubRoute,
   NormalisedItinerary,
+  ProviderId,
   RouteOption,
   SearchRequest,
   SearchResponse,
@@ -497,17 +498,29 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
     notes.push(`${selfTransferRejected} ready-made separate-ticket combinations dropped: connection too short or too long for your settings.`);
 
   // De-duplicate by the actual flights (the same itinerary can come back from
-  // neighbouring dates, or from the with/without-bags through searches).
-  // Prefer the copy whose bags Ignav confirmed, then the cheaper one.
+  // neighbouring dates, from the with/without-bags through searches, or from both
+  // Ignav and Aviasales). Flights match by number and departure date: the two
+  // sources can disagree on a time by a few minutes (AI2947 09:00 vs 09:05).
+  // Prefer the copy whose bags are confirmed, then the cheaper one.
   const signature = (o: RouteOption) =>
-    allLegs(o).flatMap((l) => l.itinerary.segments.map((s) => `${s.carrier}${s.flightNumber}@${s.departUtc}`)).join("|");
+    allLegs(o).flatMap((l) => l.itinerary.segments.map((s) => `${s.carrier}${s.flightNumber}@${s.departUtc.slice(0, 10)}`)).join("|");
   const better = (a: RouteOption, b: RouteOption) =>
     Number(a.costs.bagsUnknown) - Number(b.costs.bagsUnknown) || a.costs.total - b.costs.total;
+  const sourceOf = (o: RouteOption) => (o.legs.find((l) => l.itinerary.price.totalGbp > 0) ?? o.legs[0]).itinerary;
+  const groups = new Map<string, RouteOption[]>();
+  for (const o of options) groups.set(signature(o), [...(groups.get(signature(o)) ?? []), o]);
   const bySig = new Map<string, RouteOption>();
-  for (const o of options) {
-    const k = signature(o);
-    const prev = bySig.get(k);
-    if (!prev || better(o, prev) < 0) bySig.set(k, o);
+  for (const [k, copies] of groups) {
+    const [keep, ...rest] = copies.sort(better);
+    // The cheapest copy from each other source, so prices can be compared while testing.
+    const others = new Map<ProviderId, NonNullable<RouteOption["otherPrices"]>[number]>();
+    for (const o of rest) {
+      const it = sourceOf(o);
+      if (it.provider === sourceOf(keep).provider) continue;
+      const prev = others.get(it.provider);
+      if (!prev || o.costs.total < prev.totalGbp) others.set(it.provider, { provider: it.provider, seller: it.seller ?? null, totalGbp: o.costs.total });
+    }
+    bySig.set(k, others.size ? { ...keep, otherPrices: [...others.values()] } : keep);
   }
   const unique = [...bySig.values()].sort((a, b) => a.costs.total - b.costs.total || a.totalMins - b.totalMins);
 

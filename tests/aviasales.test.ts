@@ -179,6 +179,21 @@ describe("runSearch with Aviasales alongside Ignav", () => {
     expect(through.badges).not.toContain("Refundable");
   });
 
+  it("shows the same flights from both sources once, at the cheaper price", async () => {
+    // Ignav has Aviasales' £600 Air India trip at £700, with AI889's time 5 minutes off.
+    const [avia] = norm({ minCheckedBags: 1 });
+    const segments = avia.segments.map((sg, i) => (i === 1 ? { ...sg, departUtc: "2026-12-11T08:05:00.000Z" } : sg));
+    const fromIgnav = { ...avia, provider: "ignav" as const, seller: null, segments, price: { ...avia.price, amount: 700, totalGbp: 700 } };
+    const ignav = makeIgnav();
+    const p: FlightProvider = { ...ignav.p, searchOneWay: async (o, d, date, f, ctx) => (d === "GAU" && o === "LON" ? [fromIgnav] : ignav.p.searchOneWay(o, d, date, f, ctx)) };
+    const res = await runSearch(req, { store: createMemoryStore(), provider: p, throughProviders: [fakeAviasales] });
+    const airIndia = res.options.filter((o) => o.legs[0].itinerary.segments[0].flightNumber === "162");
+    expect(airIndia).toHaveLength(1);
+    expect(airIndia[0].legs[0].itinerary.provider).toBe("aviasales");
+    expect(airIndia[0].costs.fares[0]).toBe(600);
+    expect(airIndia[0].otherPrices).toEqual([{ provider: "ignav", seller: null, totalGbp: 700 }]);
+  });
+
   it("refundable only: skips Ignav and returns only refundable fares", async () => {
     const ignav = makeIgnav();
     const res = await runSearch({ ...req, refundableOnly: true }, { store: createMemoryStore(), provider: ignav.p, throughProviders: [fakeAviasales] });

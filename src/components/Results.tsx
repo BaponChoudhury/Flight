@@ -35,10 +35,16 @@ function fareTermsText(t: FareTerms): string | null {
 const SHOW_SOURCE_TAGS = true;
 const SOURCE_NAME: Record<ProviderId, string> = { ignav: "Ignav", aviasales: "Aviasales", duffel: "Duffel" };
 
-function SourceTag({ providers }: { providers: ProviderId[] }) {
+function SourceTag({ providers, others }: { providers: ProviderId[]; others?: RouteOption["otherPrices"] }) {
   if (!SHOW_SOURCE_TAGS || !providers.length) return null;
   const names = [...new Set(providers)].map((p) => SOURCE_NAME[p] ?? p).join(" + ");
-  return <span className="rounded-full border border-dashed border-slate-400 px-2 py-0.5 text-xs font-medium text-slate-600 dark:text-slate-300">via {names}</span>;
+  const also = (others ?? []).map((x) => `${SOURCE_NAME[x.provider] ?? x.provider} ${gbp(x.totalGbp)}${x.seller ? ` (${x.seller})` : ""}`);
+  return (
+    <span className="rounded-full border border-dashed border-slate-400 px-2 py-0.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+      via {names}
+      {also.length > 0 && ` · also ${also.join(", ")}`}
+    </span>
+  );
 }
 
 type Tz = Record<string, string>;
@@ -267,7 +273,7 @@ function OptionCard({ o, tz, req, highlight, groundAlts }: { o: RouteOption; tz:
         {(o.badges.length > 0 || SHOW_SOURCE_TAGS) && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {o.badges.map((b) => <span key={b} className={`rounded-full px-2 py-0.5 text-xs font-medium ${BADGE_STYLE[b]}`}>{b}</span>)}
-            <SourceTag providers={[...o.legs, ...(o.back?.legs ?? [])].map((l) => l.itinerary.provider)} />
+            <SourceTag providers={[...o.legs, ...(o.back?.legs ?? [])].map((l) => l.itinerary.provider)} others={o.otherPrices} />
           </div>
         )}
         <p className="mt-2 text-sm font-medium text-sky-700 dark:text-sky-400">{open ? "Hide details" : "Show details"}</p>

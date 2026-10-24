@@ -281,6 +281,8 @@ export interface RouteOption {
   totalMins: number; // outMins + back.totalMins
   badges: Badge[];
   priceAsOf: string; // earliest observed/fetched time across legs
+  /** The same flights from other sources, more expensive (or bag-unconfirmed) than this one. */
+  otherPrices?: { provider: ProviderId; seller: string | null; totalGbp: number }[];
 }
 
 export interface CallLogEntry {
