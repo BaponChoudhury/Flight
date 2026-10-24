@@ -99,24 +99,24 @@ describe("cost aggregation", () => {
 });
 
 describe("user-entered ground travel", () => {
-  const input = { trainPerPerson: 20, trainMins: 80, coachPerPerson: null, coachMins: null, cabTotal: 95, cabMins: 65, use: "cheapest" as const };
+  const input = { trainPerPerson: 20, coachPerPerson: null, cabTotal: 95, use: "cheapest" as const };
 
   it("prices train per person and cab per car, and picks the cheaper for the party", () => {
-    expect(pickGround(input, 2)).toMatchObject({ mode: "train", costGbp: 40, mins: 80 });
+    expect(pickGround(input, 2)).toMatchObject({ mode: "train", costGbp: 40 });
     expect(pickGround(input, 5)).toMatchObject({ mode: "cab", costGbp: 95 }); // 5 × £20 = £100 > £95
     expect(pickGround({ ...input, use: "cab" }, 2)).toMatchObject({ mode: "cab" });
     expect(pickGround({ ...input, cabTotal: null, use: "cab" }, 2)).toBeNull();
-    expect(pickGround({ trainPerPerson: null, trainMins: null, coachPerPerson: null, coachMins: null, cabTotal: null, cabMins: null, use: "cheapest" }, 2)).toBeNull();
+    expect(pickGround({ trainPerPerson: null, coachPerPerson: null, cabTotal: null, use: "cheapest" }, 2)).toBeNull();
   });
 
   it("prices coach per person and can pick it", () => {
-    const withCoach = { ...input, coachPerPerson: 12, coachMins: 140 };
-    expect(pickGround(withCoach, 2)).toMatchObject({ mode: "coach", costGbp: 24, mins: 140 });
+    const withCoach = { ...input, coachPerPerson: 12 };
+    expect(pickGround(withCoach, 2)).toMatchObject({ mode: "coach", costGbp: 24 });
     expect(pickGround({ ...withCoach, use: "train" }, 2)).toMatchObject({ mode: "train" });
     expect(pickGround({ ...withCoach, use: "coach" }, 5)).toMatchObject({ mode: "coach", costGbp: 60 });
   });
 
-  it("re-prices an option and moves the leave-home time", async () => {
+  it("re-prices an option, timing it from the airport", async () => {
     const { buildOption } = await import("@/lib/engine/search");
     const leg: FlightLeg = { routeType: "international", itinerary: intl, bag: { status: "included", feeGbp: 0, excessGbp: 0, includedPieces: 1, includedKg: 23, excessRisk: false, note: "" } };
     const ground = { origin_area: "Stafford", airport: "LHR", mode: "train", cost_gbp: 40, per_person: true, duration_mins: 160, notes: "" };
@@ -124,11 +124,11 @@ describe("user-entered ground travel", () => {
     const before = buildOption("through", [leg], ground, req, 180);
     expect(before.costs).toMatchObject({ ground: 80, total: 480 });
 
-    const after = applyGround(before, { mode: "cab", costGbp: 150, mins: 120, detail: "whole car" }, 180);
+    const after = applyGround(before, { mode: "cab", costGbp: 150, detail: "whole car" }, 180);
     expect(after.costs).toMatchObject({ ground: 150, total: 550 });
-    // Flight departs 21:30Z; leave home 3h + 2h earlier.
-    expect(after.leaveHomeUtc).toBe("2026-12-10T16:30:00.000Z");
-    expect(after.totalMins).toBe(before.totalMins - 40);
+    // Flight departs 21:30Z; be at the airport 3h earlier (no travel time is asked for).
+    expect(after.leaveHomeUtc).toBe("2026-12-10T18:30:00.000Z");
+    expect(after.totalMins).toBe(before.totalMins - 160);
     expect(after.ground.mode).toBe("cab");
   });
 });

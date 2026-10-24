@@ -98,23 +98,23 @@ The client is generated from `spec/ignav-openapi.json`. To regenerate: `npm run 
 - **Domestic:** hub → destination on the way out (as before), and destination → hub on the return date, one extra call per hub.
 - **Connection on the way home:** the domestic flight must land at least the change time (plus any terminal change) before the international flight leaves. It also has to be within the 14h maximum.
 - **Costs:** ground travel counted both ways. The return fare shows on the outbound flight, and the international flight home is "included".
-- **Time:** total = door-to-door out + door-to-door back. The way back adds `uk_arrival_exit_mins` (60) to get through the UK airport.
+- **Time:** total = out (from the UK airport) + back (to leaving the UK airport). The way back adds `uk_arrival_exit_mins` (60) to get through the UK airport.
 - **Typical call count:** 3 UK origins → 3 + 24 + ≤16 + ≤8 ≈ 50 calls. Real test: 49 calls, 270 options.
 
 ## Getting to the airport (train, coach or cab)
 
 There's no free API for live UK train or coach prices, or for taxi quotes (Trainline and FlixBus offer APIs only to commercial partners). So you look them up and enter them:
 
-- After a search, the **"Getting to the airport"** panel has three options for each UK airport:
-  - **train**: fare per person and journey time;
-  - **coach**: fare per person and journey time;
-  - **cab**: price for the whole car and journey time.
-- Each option has **check-price links**:
-  - **Google Maps** (train/coach times, often with fares; and drive time for a cab) opens with your town and the airport filled in, using the [documented Maps URL format](https://developers.google.com/maps/documentation/urls/guide).
+- After a search, the **"Getting to the airport"** panel is one table: a row per UK airport, with a price for each way of getting there:
+  - **train**: fare per person;
+  - **coach**: fare per person;
+  - **cab**: price for the whole car.
+- Only prices are asked for, not journey times, so result times run from the airport ("At MAN by 10:50", "26h 35m from MAN").
+- Each price has **check-price links**:
+  - **Google Maps** (train/coach routes, often with fares; and the drive for a cab) opens with your town and the airport filled in, using the [documented Maps URL format](https://developers.google.com/maps/documentation/urls/guide).
   - **National Rail**, **National Express** and **FlixBus** open their journey search page. They don't publish a link format, so nothing is pre-filled.
-- Times can be typed as `80`, `1:20`, `2h10` or `1.5` (hours).
 - **Use** picks the cheapest option for your group, or forces train, coach or cab. For example, choose cab for a very early flight when no trains are running.
-- Totals, door-to-door times and the ranking update straight away, with no new Ignav calls. Each route card shows the alternative and the price difference.
+- Totals and the ranking update straight away, with no new Ignav calls. Each route card shows the alternative and the price difference.
 - Your entries are saved in your browser, per home area. The first time, they're filled in from the `ground_access` defaults in Admin.
 
 ## Lower prices from other markets (hidden from users)
