@@ -7,6 +7,7 @@ import type { Badge, BookingLink, FareTerms, FlightLeg, NormalisedSegment, Provi
 import { activeCount, applyFilters, facetsOf, NO_FILTERS, type Filters } from "@/lib/filters";
 import { AirportCompare } from "./AirportCompare";
 import { FilterPanel } from "./FilterPanel";
+import { FollowupOptIn } from "./FollowupOptIn";
 import { EMPTY_DRAFT, GroundPanel, toInput, type GroundDraft } from "./GroundPanel";
 import { airlineName } from "@/lib/airline-names";
 import { estimateGround } from "@/lib/ground-estimate";
@@ -495,6 +496,7 @@ function ResultCard({ o, tz, req, labels, groundAlts, searchId }: { o: RouteOpti
               )}
             </div>
 
+            <div className="space-y-3">
             <div className={`${card} h-fit p-4`}>
               <h3 className="mb-2 text-sm font-bold">Price breakdown</h3>
               <table className="w-full text-sm">
@@ -529,6 +531,8 @@ function ResultCard({ o, tz, req, labels, groundAlts, searchId }: { o: RouteOpti
                 </tbody>
               </table>
               <p className="mt-2 text-xs text-slate-500">Price as of {formatLocalTime(o.priceAsOf, UK_TZ)} UK time. Fares change — check before booking.</p>
+            </div>
+            <FollowupOptIn o={o} searchId={searchId} />
             </div>
           </div>
         </div>

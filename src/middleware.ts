@@ -16,4 +16,6 @@ export function middleware(req: NextRequest) {
   });
 }
 
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"] };
+// Unsubscribe links in emails and the daily job must work even while the site is password-protected
+// (the job has its own CRON_SECRET; unsubscribe needs the link's token).
+export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|unsubscribe|api/followups/unsubscribe|api/cron).*)"] };

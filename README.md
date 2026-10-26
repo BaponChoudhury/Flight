@@ -25,6 +25,9 @@ npm run dev                  # http://localhost:3000
 | `SUPABASE_SERVICE_ROLE_KEY` | Persistent cache/config | Server-side only. Never expose to the browser. |
 | `ADMIN_PASSWORD` | Admin | Unlocks hidden-market fare requests and config edits on `/admin`. Admin data stays locked without it. |
 | `COMPENSAIR_TOKEN` | Compensation claims | Your Compensair partner token. Server-side only. |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Follow-up emails | Resend API key and sender (on a domain verified in Resend). Without them, opt-ins are saved but not emailed. |
+| `CRON_SECRET` | Follow-up emails | Protects the daily job; Vercel sends it automatically. |
+| `SITE_URL` | Optional | Public site address for links in emails; defaults to the Vercel production address. |
 | `APP_PASSWORD` | Optional | Password-protects the whole app (any username). Recommended when deployed, since there are no accounts yet. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Phase 3 | Not used yet. |
 
@@ -161,6 +164,23 @@ Passengers whose flight was delayed, cancelled or overbooked can claim compensat
 - **Admin → Compensation claims (Compensair)** lists claims sent with our token in the last year, read live from Compensair (`GET /api/v1/applications/`), with their stage and compensation.
 - The page explains which flights qualify under UK/EU rules. Compensair makes the final decision.
 - **Setup:** set `COMPENSAIR_TOKEN` (from the partner-profile link Compensair emailed you). Without it the form says claims aren't available. Admin shows whether the token is set.
+
+## Compensation follow-up emails
+
+Travellers can opt in, from any result's details ("Free compensation check for this trip"), to one email the day after their trip with a quick link to claim if a flight was delayed 3+ hours, cancelled, or they were denied boarding.
+
+- **Opt-in:** email address plus a consent tick. The trip's flights come from the result. Saved in `trip_followups` with a send date of the day after the last flight lands.
+- **Daily job:** `vercel.json` runs `/api/cron/followups` at 09:00 UTC. Vercel's free plan allows a daily job. It's protected by `CRON_SECRET`, which Vercel sends automatically once the variable is set.
+- **The email** (sent through [Resend](https://resend.com)) lists each flight with a "Check this flight" button that opens Compensair's claim form pre-filled (their documented `#param=` links), plus an unsubscribe link and one-click unsubscribe headers.
+- **Privacy:** the email address is wiped once the email is sent or the traveller unsubscribes. Admin shows addresses partly hidden.
+- **Unsubscribe:** `/unsubscribe?token=…` is a plain form, so email link scanners can't unsubscribe people. It works while the site password is on, as does the daily job.
+- **Admin → Compensation follow-up emails:** shows counts, the list, whether email is set up, and a **Send due emails now** button.
+- **Setup:**
+  1. Run `supabase/migrations/0006_trip_followups.sql`.
+  2. In Vercel set `RESEND_API_KEY`, `EMAIL_FROM` (e.g. `Flights to India <alerts@yourdomain>`, on a domain verified in Resend) and `CRON_SECRET` (any long random string).
+  3. Optionally set `SITE_URL` (otherwise the Vercel production address is used for links).
+
+  Until email is set up, opt-ins are saved and nothing is sent.
 
 ## Tracking Aviasales bookings (SubIDs)
 
