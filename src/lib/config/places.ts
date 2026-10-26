@@ -30,6 +30,8 @@ export const UK_AIRPORTS: UkAirport[] = [
   { code: "LGW", name: "London Gatwick", lat: 51.1537, lon: -0.1821, suggest: false },
   { code: "STN", name: "London Stansted", lat: 51.886, lon: 0.2389, suggest: false },
   { code: "LTN", name: "London Luton", lat: 51.8747, lon: -0.3683, suggest: false },
+  { code: "LCY", name: "London City", lat: 51.5048, lon: 0.0495, suggest: false },
+  { code: "SEN", name: "London Southend", lat: 51.5703, lon: 0.6933, suggest: false },
   { code: "EMA", name: "East Midlands", lat: 52.8311, lon: -1.3281, suggest: false },
   { code: "LPL", name: "Liverpool", lat: 53.3336, lon: -2.8497, suggest: false },
   { code: "EXT", name: "Exeter", lat: 50.7344, lon: -3.4139, suggest: false },
