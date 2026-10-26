@@ -10,6 +10,8 @@ export interface GroundDraft {
   coachPerPerson: string;
   cabTotal: string;
   use: GroundInput["use"];
+  /** Filled in from our distance-based estimate; cleared as soon as the user edits it. */
+  estimated?: boolean;
 }
 
 export const EMPTY_DRAFT: GroundDraft = {
@@ -63,26 +65,38 @@ export function GroundPanel({
   returnTrip?: boolean;
 }) {
   const th = "px-1.5 py-1.5 text-left align-bottom font-medium";
-  const added = airports.filter((a) => groundChoices(toInput({ ...EMPTY_DRAFT, ...drafts[a] }), pax).length > 0);
+  const rows = airports.map((a) => {
+    const d = { ...EMPTY_DRAFT, ...drafts[a] };
+    return { a, d, chosen: pickGround(toInput(d), pax) };
+  });
+  const included = rows.filter((r) => r.chosen);
+  const anyEstimated = included.some((r) => r.d.estimated);
   return (
-    <details className="group rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/80 dark:bg-slate-900 dark:ring-slate-800">
-      <summary className="flex cursor-pointer list-none items-center gap-3 p-4 [&::-webkit-details-marker]:hidden">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300">
+    <details className="group overflow-hidden rounded-2xl shadow-sm ring-1 ring-teal-600/30 dark:ring-teal-500/30">
+      <summary className="flex cursor-pointer list-none items-center gap-3 bg-gradient-to-r from-teal-600 to-emerald-600 p-4 text-white [&::-webkit-details-marker]:hidden">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15">
           <Icon name="train" className="h-5 w-5" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block font-semibold">Getting to the airport{originArea ? ` from ${originArea}` : ""}</span>
-          <span className="block text-sm text-slate-600 dark:text-slate-400">
-            {added.length
-              ? `Added for ${added.join(", ")} — included in the prices below`
-              : "Add your train, coach or cab fare to see the full trip cost"}
+          <span className="flex flex-wrap items-center gap-2 font-bold">
+            Door-to-door cost{originArea ? ` from ${originArea}` : ""}
+            {anyEstimated && <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-semibold">estimated</span>}
+          </span>
+          <span className="mt-0.5 block text-sm text-white/90">
+            {included.length
+              ? `${included.map((r) => `${LABEL[r.chosen!.mode]} to ${r.a} ${r.d.estimated ? "~" : ""}${gbp(r.chosen!.costGbp)}`).join(" · ")} — included in every price below`
+              : "Add your train, coach or cab fare to see what each trip really costs"}
           </span>
         </span>
-        <Icon name="chevronDown" className="h-5 w-5 shrink-0 text-slate-400 transition group-open:rotate-180" />
+        <span className="hidden shrink-0 items-center gap-1 rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-teal-700 shadow-sm group-open:hidden sm:inline-flex">
+          {anyEstimated ? "Use my fares" : "Edit"} <Icon name="chevronDown" className="h-4 w-4" />
+        </span>
+        <Icon name="chevronDown" className="h-5 w-5 shrink-0 text-white/80 transition group-open:rotate-180 sm:hidden sm:group-open:inline" />
       </summary>
-      <div className="border-t border-slate-100 p-4 pt-3 dark:border-slate-800">
+      <div className="bg-white p-4 pt-3 dark:bg-slate-900">
       <p className="text-sm text-slate-600 dark:text-slate-400">
-        Tap a link to check the price, then enter it here. Results update straight away — no new search needed.
+        {anyEstimated && "We've filled in typical fares for the distance from your home (train by default). "}
+        Tap a link to check your real fare, then type it in. Results update straight away — no new search needed.
         {returnTrip && " Enter one-way prices — we count them twice for the return."}
       </p>
       <table className="mt-3 w-full table-fixed text-sm">
@@ -100,7 +114,7 @@ export function GroundPanel({
         <tbody>
           {airports.map((a) => {
             const d = { ...EMPTY_DRAFT, ...drafts[a] };
-            const set = (patch: Partial<GroundDraft>) => onChange(a, { ...d, ...patch });
+            const set = (patch: Partial<GroundDraft>) => onChange(a, { ...d, ...patch, estimated: false });
             const input = toInput(d);
             const chosen = pickGround(input, pax);
             const entered = groundChoices(input, pax).length > 0;
@@ -109,6 +123,7 @@ export function GroundPanel({
               <tr key={a} className="border-b border-slate-100 align-top last:border-0 dark:border-slate-800">
                 <td className="px-1.5 py-2">
                   <p className="font-semibold">{a}</p>
+                  {d.estimated && <span className="mt-0.5 inline-block rounded bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700 dark:bg-teal-900/40 dark:text-teal-200">estimate</span>}
                   <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">Use</span>
                   <select
                     aria-label={`Which to use for ${a}`}

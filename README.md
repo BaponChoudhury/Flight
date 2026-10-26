@@ -137,6 +137,13 @@ There's no free API for live UK train or coach prices, or for taxi quotes (Train
   - **coach**: fare per person;
   - **cab**: price for the whole car.
 - Only prices are asked for, not journey times, so result times run from the airport ("At MAN by 10:50", "26h 35m from MAN").
+- **Estimates by default:** when the home town is known (UK search), every airport starts with a typical fare for the distance (`src/lib/ground-estimate.ts`), train by default. The distance is the straight line from home to the airport, plus 30% for the route:
+  - train: about £5 + £0.18 per km, per person;
+  - coach: about £3 + £0.07 per km, per person;
+  - cab: about £4 + £1.50 per km for the whole car.
+
+  Estimates are marked "estimate" and shown with "~". Typing a price replaces the estimate for that airport, and it's remembered on the device.
+- The panel is a coloured **Door-to-door cost** bar above the results, listing what's included ("Train to MAN ~£19 · …"). Each result shows "incl. ~£19 train" under its price, so totals are door to door.
 - Each price has **check-price links**:
   - **Google Maps** (train/coach routes, often with fares; and the drive for a cab) opens with your town and the airport filled in, using the [documented Maps URL format](https://developers.google.com/maps/documentation/urls/guide).
   - **National Rail**, **National Express** and **FlixBus** open their journey search page. They don't publish a link format, so nothing is pre-filled.

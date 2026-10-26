@@ -88,7 +88,7 @@ export function SearchForm({
   const [picked, setPicked] = useState<AirportRecord[]>([]);
   const [from, setFrom] = useState("");
   const [dest, setDest] = useState<string | null>("GAU");
-  const [located, setLocated] = useState<{ name: string; airports: NearbyAirport[] } | null>(null);
+  const [located, setLocated] = useState<{ name: string; lat: number; lon: number; airports: NearbyAirport[] } | null>(null);
   const [locating, setLocating] = useState(false);
   const [locateMsg, setLocateMsg] = useState("");
   const [airports, setAirports] = useState<string[]>([]);
@@ -137,7 +137,7 @@ export function SearchForm({
         if (!airports.length) setAirports(DEFAULT_AIRPORTS);
         return;
       }
-      setLocated({ name: data.place.name, airports: data.airports });
+      setLocated({ name: data.place.name, lat: data.place.lat, lon: data.place.lon, airports: data.airports });
       setAirports(data.airports.map((a: NearbyAirport) => a.code));
     } catch {
       setLocateMsg("Couldn't look that up — pick your airports below.");
@@ -172,6 +172,7 @@ export function SearchForm({
     onSearch({
       ...req,
       originArea: fromMode === "uk" ? (located?.name ?? from.trim()) : "",
+      originLatLon: fromMode === "uk" && located ? { lat: located.lat, lon: located.lon } : null,
       dest,
       ukAirports: origins,
       returnDate: tripType === "return" ? returnDate : null,
