@@ -204,6 +204,22 @@ describe("runSearch with Aviasales alongside Ignav", () => {
     expect(airIndia[0].otherPrices).toEqual([{ provider: "ignav", seller: null, totalGbp: 700 }]);
   });
 
+  it("shows the Aviasales fare (it earns commission) when it's at most £5 dearer than Ignav's for the same flights", async () => {
+    const [avia] = norm({ minCheckedBags: 1 }); // £600 for 2 adults
+    const run = async (ignavGbp: number) => {
+      const fromIgnav = { ...avia, provider: "ignav" as const, seller: null, price: { ...avia.price, amount: ignavGbp, totalGbp: ignavGbp } };
+      const ignav = makeIgnav();
+      const p: FlightProvider = { ...ignav.p, searchOneWay: async (o, d, date, f, ctx) => (d === "GAU" && o === "LON" ? [fromIgnav] : ignav.p.searchOneWay(o, d, date, f, ctx)) };
+      const res = await runSearch(req, { store: createMemoryStore(), provider: p, throughProviders: [fakeAviasales] });
+      return res.options.find((o) => o.legs[0].itinerary.segments[0].flightNumber === "162")!;
+    };
+    expect((await run(597)).legs[0].itinerary.provider).toBe("aviasales"); // £3 dearer: Aviasales
+    expect((await run(595)).legs[0].itinerary.provider).toBe("aviasales"); // exactly £5 dearer: still Aviasales
+    const cheaper = await run(590); // £10 dearer: Ignav
+    expect(cheaper.legs[0].itinerary.provider).toBe("ignav");
+    expect(cheaper.otherPrices).toEqual([{ provider: "aviasales", seller: "CheapTrips", totalGbp: 600 }]);
+  });
+
   it("keeps the refundable fare on each option so the results page can filter without a new search", async () => {
     const res = await runSearch(req, { store: createMemoryStore(), provider: makeIgnav().p, throughProviders: [fakeAviasales] });
     const airIndia = res.options.filter((o) => o.legs[0].itinerary.segments[0].flightNumber === "162");

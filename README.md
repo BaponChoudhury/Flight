@@ -102,6 +102,20 @@ The client is generated from `spec/ignav-openapi.json`. To regenerate: `npm run 
 - **Time:** total = out (from the UK airport) + back (to leaving the UK airport). The way back adds `uk_arrival_exit_mins` (60) to get through the UK airport.
 - **Typical call count:** 3 UK origins → 3 + 24 + ≤16 + ≤8 ≈ 50 calls. Real test: 49 calls, 270 options.
 
+## Comparing departure airports
+
+When a search covers more than one UK airport (e.g. Manchester, Birmingham and London for Stafford), the results start with **Compare your airports**: one card per airport, cheapest first.
+
+- Each card shows the airport's cheapest trip, how much more it costs than the cheapest airport, its fastest trip and how many options it has.
+- Once the user adds train, coach or cab prices under "Getting to the airport", the totals include them ("incl. £25 to get there"), so the comparison is door to door.
+- Tapping a card shows only that airport's results; tapping it again shows all.
+- It follows every other filter, and uses the results already loaded, so it costs no extra searches. The cost of a multi-airport search comes from searching each airport (roughly 8–12 Ignav calls each), which happens either way.
+- So the cards stay accurate, each airport's 15 cheapest and 15 fastest options are always kept when results are trimmed.
+
+## Preferring fares that earn commission
+
+When Ignav and Aviasales return the same flights, the result shows the Aviasales fare and booking link if it costs at most `prefer_commission_within_gbp` (default £5) more, because Aviasales bookings earn commission. A fare with confirmed bags still beats one without. Change the amount in Admin → Search settings; set it to 0 to always show the cheapest.
+
 ## Filtering results
 
 The results page has a filter panel: down the left on wide screens, behind a "Filters" button on phones. Every filter works on the results already loaded, so none of them runs a new search or costs an API call.
