@@ -5,6 +5,7 @@ import { applyGround, groundChoices, pickGround, rankOptions, refundableView, va
 import { formatDuration, formatLocalDay, formatLocalTime, localDate } from "@/lib/engine/time";
 import type { Badge, BookingLink, FareTerms, FlightLeg, NormalisedSegment, ProviderId, RouteOption, SearchRequest, SearchResponse, Settings } from "@/lib/types";
 import { activeCount, applyFilters, facetsOf, NO_FILTERS, type Filters } from "@/lib/filters";
+import { AirportCompare } from "./AirportCompare";
 import { FilterPanel } from "./FilterPanel";
 import { EMPTY_DRAFT, GroundPanel, toInput, type GroundDraft } from "./GroundPanel";
 import { airlineName } from "@/lib/airline-names";
@@ -595,6 +596,15 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
   );
   const facets = useMemo(() => (options.length ? facetsOf(options) : null), [options]);
   const filtered = useMemo(() => applyFilters(options, filters, data.airportTz), [options, filters, data.airportTz]);
+  // The airport comparison follows every filter except the airport one, so all airports stay comparable.
+  const comparable = useMemo(() => applyFilters(options, { ...filters, hiddenUkAirports: [] }, data.airportTz), [options, filters, data.airportTz]);
+  const focusedAirport = useMemo(() => {
+    const all = [...new Set(comparable.map((o) => o.ukAirport))];
+    const shownAirports = all.filter((a) => !filters.hiddenUkAirports.includes(a));
+    return shownAirports.length === 1 && all.length > 1 ? shownAirports[0] : null;
+  }, [comparable, filters.hiddenUkAirports]);
+  const focusAirport = (a: string | null) =>
+    setFilters({ ...filters, hiddenUkAirports: a ? [...new Set(comparable.map((o) => o.ukAirport))].filter((x) => x !== a) : [] });
   const ranked = useMemo(() => rankOptions(filtered, priceWeight, settings), [filtered, priceWeight, settings]);
   const sorted = useMemo(() => {
     if (sortBy === "cheapest") return [...filtered].sort((a, b) => Number(a.costs.bagsUnknown) - Number(b.costs.bagsUnknown) || a.costs.total - b.costs.total);
@@ -657,6 +667,8 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
 
           <div className="min-w-0 space-y-4">
             <GroundPanel originArea={req.originArea} airports={airports} drafts={drafts} pax={pax} onChange={updateDraft} returnTrip={!!req.returnDate} />
+
+            <AirportCompare options={comparable} focused={focusedAirport} onFocus={focusAirport} />
 
             {filtered.length === 0 ? (
               <div className={`${card} p-6 text-center`}>

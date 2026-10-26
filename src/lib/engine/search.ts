@@ -22,6 +22,8 @@ import { addDays, addMinutes, localDate, localHour, minutesBetween } from "./tim
 import { knownTz } from "@/lib/config/places";
 
 const KEEP_PER_AXIS = 150;
+/** Options per UK airport always kept (by price and by time), whatever the overall trim drops. */
+const PER_AIRPORT_AXIS = 15;
 
 /**
  * Trim the option list without hiding anything the ranking could pick: keep the
@@ -41,12 +43,18 @@ export function selectForReturn<T extends { costs: { total: number }; totalMins:
   return byCost.filter((o) => keep.has(o));
 }
 
-/** selectForReturn, plus the best of the options the refundable filter would show. */
-function keepRefundableToo(options: RouteOption[]): RouteOption[] {
+/**
+ * selectForReturn, plus the best of the options the refundable filter would show, plus
+ * each UK airport's own cheapest and fastest, so the airport comparison stays accurate.
+ */
+function keepForDisplay(options: RouteOption[]): RouteOption[] {
   const kept = new Set(selectForReturn(options));
   const views = options.flatMap((o) => (refundableView(o) ? [{ o, view: refundableView(o)! }] : []));
   const bestViews = new Set(selectForReturn(views.map((v) => v.view)));
   for (const v of views) if (bestViews.has(v.view)) kept.add(v.o);
+  const byAirport = new Map<string, RouteOption[]>();
+  for (const o of options) byAirport.set(o.ukAirport, [...(byAirport.get(o.ukAirport) ?? []), o]);
+  for (const group of byAirport.values()) for (const o of selectForReturn(group, PER_AIRPORT_AXIS)) kept.add(o);
   return options.filter((o) => kept.has(o)).sort((a, b) => a.costs.total - b.costs.total || a.totalMins - b.totalMins);
 }
 
@@ -513,9 +521,16 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
   // Prefer the copy whose bags are confirmed, then the cheaper one.
   const signature = (o: RouteOption) =>
     allLegs(o).flatMap((l) => l.itinerary.segments.map((s) => `${s.carrier}${s.flightNumber}@${s.departUtc.slice(0, 10)}`)).join("|");
-  const better = (a: RouteOption, b: RouteOption) =>
-    Number(a.costs.bagsUnknown) - Number(b.costs.bagsUnknown) || a.costs.total - b.costs.total;
   const sourceOf = (o: RouteOption) => (o.legs.find((l) => l.itinerary.price.totalGbp > 0) ?? o.legs[0]).itinerary;
+  // Aviasales bookings earn us commission, so its copy wins unless it's more than
+  // prefer_commission_within_gbp dearer. Confirmed bags still come first.
+  const earnsCommission = (o: RouteOption) => sourceOf(o).provider === "aviasales";
+  const effectiveCost = (o: RouteOption) => o.costs.total - (earnsCommission(o) ? (s.prefer_commission_within_gbp ?? 0) : 0);
+  const better = (a: RouteOption, b: RouteOption) =>
+    Number(a.costs.bagsUnknown) - Number(b.costs.bagsUnknown) ||
+    effectiveCost(a) - effectiveCost(b) ||
+    Number(earnsCommission(b)) - Number(earnsCommission(a)) ||
+    a.costs.total - b.costs.total;
   const groups = new Map<string, RouteOption[]>();
   for (const o of options) groups.set(signature(o), [...(groups.get(signature(o)) ?? []), o]);
   const bySig = new Map<string, RouteOption>();
@@ -555,7 +570,7 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
 
   return {
     searchId,
-    options: keepRefundableToo(unique),
+    options: keepForDisplay(unique),
     stats: { paidCalls, paidByProvider, cacheHits, failedCalls: failed, durationMs, calls: ctx.log },
     errors: dedupeErrors(errors),
     notes,

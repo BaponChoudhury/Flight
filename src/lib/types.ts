@@ -82,6 +82,8 @@ export interface Settings {
   domestic_max_stops: number;
   hub_route_recheck_days: number;
   unknown_bag_penalty: number;
+  /** Same flights from two sources: show the one that earns commission (Aviasales) if it costs at most this much more. */
+  prefer_commission_within_gbp: number;
   max_parallel_calls: number;
   fx_margin_pct: number; // taken off the mid-market rate when converting foreign-market prices
   hidden_market_min_saving_gbp: number; // only offer a foreign-market price that beats the UK by at least this

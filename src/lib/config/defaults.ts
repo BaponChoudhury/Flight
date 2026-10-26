@@ -97,6 +97,7 @@ export const DEFAULT_SETTINGS: Settings = {
   domestic_max_stops: 1, // Ignav's direct-only domestic coverage is thin (e.g. no CCU→GAU directs)
   hub_route_recheck_days: 30,
   unknown_bag_penalty: 0.15,
+  prefer_commission_within_gbp: 5,
   max_parallel_calls: 12,
   fx_margin_pct: 0.4,
   hidden_market_min_saving_gbp: 5,
