@@ -541,38 +541,39 @@ function draftKey(originArea: string) {
   return `ground:${originArea}`;
 }
 
-/** Start from what the user typed last time on this device, else the admin defaults. */
-function initialDrafts(data: SearchResponse, req: SearchRequest): Record<string, GroundDraft> {
+const hasPrice = (d: GroundDraft) => !!(d.trainPerPerson.trim() || d.coachPerPerson.trim() || d.cabTotal.trim());
+
+/**
+ * Start from what the user typed last time on this device; otherwise from Admin's fares for
+ * this home area, then our distance-based estimate. Anything the user didn't type is marked
+ * as an estimate. Saved rows with no prices in them are ignored.
+ */
+export function initialDrafts(data: SearchResponse, req: SearchRequest): Record<string, GroundDraft> {
   let saved: Record<string, GroundDraft> = {};
   try {
     saved = JSON.parse(localStorage.getItem(draftKey(req.originArea)) ?? "{}");
   } catch {
     /* storage unavailable */
   }
+  const drafts: Record<string, GroundDraft> = {};
   // Older saved drafts predate some fields (e.g. coach) or have travel times; keep just the prices.
-  const drafts: Record<string, GroundDraft> = Object.fromEntries(
-    Object.entries(saved).map(([a, d]) => [
-      a,
-      { trainPerPerson: d.trainPerPerson ?? "", coachPerPerson: d.coachPerPerson ?? "", cabTotal: d.cabTotal ?? "", use: d.use ?? "cheapest", estimated: d.estimated === true },
-    ]),
-  );
-  for (const o of data.options) {
-    const g = o.ground;
-    if (drafts[o.ukAirport] || g.mode === "not set") continue;
-    const perPerson = g.per_person ? g.cost_gbp : null;
-    drafts[o.ukAirport] = {
-      ...EMPTY_DRAFT,
-      ...(g.mode === "train" && perPerson != null ? { trainPerPerson: String(perPerson) } : {}),
-      ...(g.mode === "cab" && !g.per_person ? { cabTotal: String(g.cost_gbp) } : {}),
-    };
+  for (const [a, d] of Object.entries(saved)) {
+    const draft = { trainPerPerson: d.trainPerPerson ?? "", coachPerPerson: d.coachPerPerson ?? "", cabTotal: d.cabTotal ?? "", use: d.use ?? "cheapest", estimated: d.estimated === true };
+    if (hasPrice(draft)) drafts[a] = draft;
   }
-  // Anything still empty starts from our distance-based estimate (train by default), marked as such.
-  if (req.originLatLon)
-    for (const a of new Set(data.options.map((o) => o.ukAirport))) {
-      if (drafts[a]) continue;
-      const e = estimateGround(req.originLatLon, a);
-      if (e) drafts[a] = { trainPerPerson: String(e.trainPerPerson), coachPerPerson: String(e.coachPerPerson), cabTotal: String(e.cabTotal), use: "train", estimated: true };
-    }
+  const home = req.originLatLon;
+  for (const a of new Set(data.options.map((o) => o.ukAirport))) {
+    if (drafts[a]) continue;
+    const e = home ? estimateGround(home, a) : null;
+    const draft: GroundDraft = e
+      ? { trainPerPerson: String(e.trainPerPerson), coachPerPerson: String(e.coachPerPerson), cabTotal: String(e.cabTotal), use: "train", estimated: true }
+      : { ...EMPTY_DRAFT };
+    // Admin's fare for this home area, if any, beats the distance formula (still an estimate to the user).
+    const configured = data.options.find((o) => o.ukAirport === a && o.ground.mode !== "not set")?.ground;
+    if (configured?.mode === "train" && configured.per_person) Object.assign(draft, { trainPerPerson: String(configured.cost_gbp), use: "train", estimated: true });
+    if (configured?.mode === "cab" && !configured.per_person) Object.assign(draft, { cabTotal: String(configured.cost_gbp), use: "cab", estimated: true });
+    if (hasPrice(draft)) drafts[a] = draft;
+  }
   return drafts;
 }
 
