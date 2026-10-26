@@ -4,6 +4,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { defaultConfig, DEFAULT_SETTINGS } from "@/lib/config/defaults";
 import type { AppConfig, CallLogEntry, HubRoute, SearchRequest, Settings } from "@/lib/types";
+import type { TripFollowup } from "@/lib/followups";
 
 export const CONFIG_TABLES = {
   airports: { key: "airports", pk: ["iata"] },
@@ -96,6 +97,14 @@ export interface Store {
   createFareRequest(r: FareRequest): Promise<void>;
   listFareRequests(limit?: number): Promise<(FareRequest & { quote: FareQuote | null })[]>;
   logBookingClick(c: BookingClick): Promise<void>;
+  createFollowup(f: TripFollowup): Promise<void>;
+  /** Follow-ups due on or before `date` (yyyy-mm-dd), not yet sent or unsubscribed. */
+  listDueFollowups(date: string, limit?: number): Promise<TripFollowup[]>;
+  /** Marks a follow-up sent and wipes its email address. */
+  markFollowupSent(id: string): Promise<void>;
+  /** Unsubscribes by the link's token and wipes the email address; false if the token is unknown. */
+  unsubscribeFollowup(token: string): Promise<boolean>;
+  listFollowups(limit?: number): Promise<TripFollowup[]>;
   listBookingClicks(limit?: number): Promise<BookingClick[]>;
   putCache(row: CacheRow): Promise<void>;
   logSearch(search: SearchLog, calls: CallLogEntry[]): Promise<void>;
@@ -129,6 +138,7 @@ class MemoryStore implements Store {
   private quotes = new Map<string, FareQuote>();
   private requests: FareRequest[] = [];
   private clicks: BookingClick[] = [];
+  private followups: TripFollowup[] = [];
 
   async saveQuote(q: FareQuote) {
     this.quotes.set(q.id, structuredClone(q));
@@ -148,6 +158,25 @@ class MemoryStore implements Store {
 
   async logBookingClick(c: BookingClick) {
     this.clicks.push(structuredClone(c));
+  }
+  async createFollowup(f: TripFollowup) {
+    this.followups.push(structuredClone(f));
+  }
+  async listDueFollowups(date: string, limit = 100) {
+    return structuredClone(this.followups.filter((f) => f.send_after <= date && !f.sent_at && !f.unsubscribed_at && f.email).slice(0, limit));
+  }
+  async markFollowupSent(id: string) {
+    const f = this.followups.find((x) => x.id === id);
+    if (f) Object.assign(f, { sent_at: new Date().toISOString(), email: null });
+  }
+  async unsubscribeFollowup(token: string) {
+    const f = this.followups.find((x) => x.unsubscribe_token === token);
+    if (!f) return false;
+    Object.assign(f, { unsubscribed_at: f.unsubscribed_at ?? new Date().toISOString(), email: null });
+    return true;
+  }
+  async listFollowups(limit = 200) {
+    return structuredClone([...this.followups].reverse().slice(0, limit));
   }
   async listBookingClicks(limit = 200) {
     return structuredClone([...this.clicks].reverse().slice(0, limit));
@@ -289,6 +318,46 @@ class SupabaseStore implements Store {
   async logBookingClick(c: BookingClick) {
     const { error } = await this.db.from("booking_clicks").insert(c);
     if (error) throw new Error(`booking_clicks insert failed (run supabase/migrations/0005_booking_clicks.sql?): ${error.message}`);
+  }
+
+  async createFollowup(f: TripFollowup) {
+    const { error } = await this.db.from("trip_followups").insert(f);
+    if (error) throw new Error(`trip_followups insert failed (run supabase/migrations/0006_trip_followups.sql?): ${error.message}`);
+  }
+
+  async listDueFollowups(date: string, limit = 100) {
+    const { data, error } = await this.db
+      .from("trip_followups")
+      .select("*")
+      .lte("send_after", date)
+      .is("sent_at", null)
+      .is("unsubscribed_at", null)
+      .not("email", "is", null)
+      .order("send_after")
+      .limit(limit);
+    if (error) throw new Error(`trip_followups read failed: ${error.message}`);
+    return (data ?? []) as TripFollowup[];
+  }
+
+  async markFollowupSent(id: string) {
+    const { error } = await this.db.from("trip_followups").update({ sent_at: new Date().toISOString(), email: null }).eq("id", id);
+    if (error) throw new Error(`trip_followups update failed: ${error.message}`);
+  }
+
+  async unsubscribeFollowup(token: string) {
+    const { data, error } = await this.db
+      .from("trip_followups")
+      .update({ unsubscribed_at: new Date().toISOString(), email: null })
+      .eq("unsubscribe_token", token)
+      .select("id");
+    if (error) throw new Error(`trip_followups update failed: ${error.message}`);
+    return (data ?? []).length > 0;
+  }
+
+  async listFollowups(limit = 200) {
+    const { data, error } = await this.db.from("trip_followups").select("*").order("created_at", { ascending: false }).limit(limit);
+    if (error) throw new Error(`trip_followups read failed (run supabase/migrations/0006_trip_followups.sql?): ${error.message}`);
+    return (data ?? []) as TripFollowup[];
   }
 
   async listBookingClicks(limit = 200) {

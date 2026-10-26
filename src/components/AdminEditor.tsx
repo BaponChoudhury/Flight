@@ -263,6 +263,95 @@ function CompensairClaims() {
   );
 }
 
+interface FollowupRow {
+  id: string;
+  created_at: string;
+  email: string | null;
+  trip: { origin: string; dest: string; flights: { carrier: string; flightNumber: string; departUtc: string }[] };
+  send_after: string;
+  sent_at: string | null;
+  unsubscribed_at: string | null;
+}
+
+function Followups() {
+  const [data, setData] = useState<{ emailConfigured: boolean; followups: FollowupRow[] } | null>(null);
+  const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
+  async function load() {
+    setError("");
+    const res = await fetch("/api/followups", { headers: adminHeaders() });
+    const d = await res.json();
+    if (!res.ok) {
+      setError(d.error ?? "Failed");
+      setData(null);
+      return;
+    }
+    setData(d);
+  }
+  async function sendNow() {
+    setStatus("Sending…");
+    const res = await fetch("/api/followups/send-due", { method: "POST", headers: adminHeaders() });
+    const d = await res.json();
+    setStatus(!res.ok ? `Error: ${d.error}` : d.skipped ?? `Sent ${d.sent}${d.failed ? `, ${d.failed} failed` : ""}.`);
+    load();
+  }
+  useEffect(() => {
+    load();
+  }, []);
+  const rows = data?.followups ?? [];
+  const waiting = rows.filter((r) => !r.sent_at && !r.unsubscribed_at).length;
+  return (
+    <details className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+      <summary className="cursor-pointer font-semibold">Compensation follow-up emails {data ? `(${waiting} waiting)` : ""}</summary>
+      <p className="my-2 text-sm text-slate-600 dark:text-slate-400">
+        Travellers who opted in get one email the day after their last flight lands, with links to check each flight with Compensair. A daily job sends
+        them at 09:00 UTC. Email addresses are wiped once sent or unsubscribed.
+      </p>
+      {data && (
+        <p className="mb-2 text-sm">
+          Email sending: <strong>{data.emailConfigured ? "set up" : "not set up — add RESEND_API_KEY and EMAIL_FROM"}</strong> · {waiting} waiting ·{" "}
+          {rows.filter((r) => r.sent_at).length} sent · {rows.filter((r) => r.unsubscribed_at).length} unsubscribed
+        </p>
+      )}
+      <div className="mb-2 flex items-center gap-2">
+        <button type="button" className="rounded border border-slate-300 px-3 py-1 text-sm dark:border-slate-600" onClick={load}>Refresh</button>
+        <button type="button" className="rounded bg-brand-600 px-3 py-1 text-sm font-semibold text-white" onClick={sendNow}>Send due emails now</button>
+        <span className="text-sm">{status}</span>
+      </div>
+      {error && <p className="text-sm text-rose-700">{error}</p>}
+      {data && rows.length === 0 && <p className="text-sm">No opt-ins yet.</p>}
+      {rows.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs text-slate-500">
+              <tr>
+                <th className="py-1 pr-3">Opted in</th>
+                <th className="py-1 pr-3">Trip</th>
+                <th className="py-1 pr-3">Flights</th>
+                <th className="py-1 pr-3">Send on</th>
+                <th className="py-1 pr-3">Status</th>
+                <th className="py-1 pr-3">Email</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className="border-t border-slate-100 dark:border-slate-800">
+                  <td className="py-1 pr-3 whitespace-nowrap">{new Date(r.created_at).toLocaleDateString("en-GB")}</td>
+                  <td className="py-1 pr-3 whitespace-nowrap">{r.trip.origin} → {r.trip.dest}</td>
+                  <td className="py-1 pr-3">{r.trip.flights.map((f) => `${f.carrier}${f.flightNumber}`).join(" ")}</td>
+                  <td className="py-1 pr-3 whitespace-nowrap">{r.send_after}</td>
+                  <td className="py-1 pr-3">{r.unsubscribed_at ? "unsubscribed" : r.sent_at ? `sent ${new Date(r.sent_at).toLocaleDateString("en-GB")}` : "waiting"}</td>
+                  <td className="py-1 pr-3">{r.email ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </details>
+  );
+}
+
 function AdminKeyBox({ onSet }: { onSet: () => void }) {
   const [value, setValue] = useState(adminKey());
   return (
@@ -389,6 +478,7 @@ export function AdminEditor() {
       <FareRequests key={keyVersion} />
       <BookingClicks key={`clicks-${keyVersion}`} />
       <CompensairClaims key={`claims-${keyVersion}`} />
+      <Followups key={`followups-${keyVersion}`} />
       {TABLES.map((t) => <TableEditor key={t.table} spec={t} initial={data.config[t.key] as unknown as Row[]} />)}
       <SettingsEditor initial={data.config.settings} />
     </div>
