@@ -23,6 +23,8 @@ export interface GroundAccess {
   per_person: boolean; // true: cost_gbp is per traveller (train); false: per party (car/taxi)
   duration_mins: number;
   notes: string;
+  /** Results page only: the price is our distance-based estimate, not one the user entered. */
+  estimated?: boolean;
 }
 
 export interface BagFee {
@@ -206,6 +208,7 @@ export interface SearchRequest {
   minBufferMins?: number | null;
   allowOvernight?: boolean;
   refundableOnly?: boolean; // only tickets refundable before departure (Aviasales fares; Ignav has no refund data)
+  originLatLon?: { lat: number; lon: number } | null; // where originArea is, for estimating the trip to each airport
   ukAirports?: string[] | null; // departure airports, any country, e.g. ["BHX", "MAN", "LON"] or ["FRA"]; city codes (LON, PAR) allowed
 }
 

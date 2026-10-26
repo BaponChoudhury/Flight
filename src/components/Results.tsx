@@ -9,6 +9,7 @@ import { AirportCompare } from "./AirportCompare";
 import { FilterPanel } from "./FilterPanel";
 import { EMPTY_DRAFT, GroundPanel, toInput, type GroundDraft } from "./GroundPanel";
 import { airlineName } from "@/lib/airline-names";
+import { estimateGround } from "@/lib/ground-estimate";
 import { AirlineLogo, card, Icon, type IconName } from "./ui";
 
 const gbp2 = (n: number) => `£${n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -414,6 +415,18 @@ function ResultCard({ o, tz, req, labels, groundAlts, searchId }: { o: RouteOpti
               {req.adults + req.children > 1 ? `total, ${travellers(req)}` : "total per adult"}
               {o.back ? " · return" : ""}
             </p>
+            {o.ground.mode !== "not set" ? (
+              <p
+                title={`Door to door: includes ${o.ground.estimated ? "about " : ""}${gbp(o.costs.ground)} ${modeLabel(o.ground.mode).toLowerCase()} to ${o.ukAirport}${o.ground.estimated ? " (estimate)" : ""}`}
+                className="mt-0.5 inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-teal-50 px-1.5 py-0.5 text-[11px] font-medium text-teal-800 dark:bg-teal-900/30 dark:text-teal-200"
+              >
+                <Icon name="train" className="h-3 w-3" />
+                incl. {o.ground.estimated ? "~" : ""}
+                {gbp(o.costs.ground)} {modeLabel(o.ground.mode).toLowerCase()}
+              </p>
+            ) : (
+              <p className="mt-0.5 text-[11px] text-slate-500">flights only</p>
+            )}
           </div>
           <button
             type="button"
@@ -448,7 +461,7 @@ function ResultCard({ o, tz, req, labels, groundAlts, searchId }: { o: RouteOpti
                     <>Travel to {o.ukAirport} not added yet — add it under &quot;Getting to the airport&quot;.</>
                   ) : (
                     <>
-                      {modeLabel(o.ground.mode)} from {req.originArea || "home"} to {o.ukAirport} · {gbp(o.costs.ground)}
+                      {modeLabel(o.ground.mode)} from {req.originArea || "home"} to {o.ukAirport} · {o.ground.estimated ? "about " : ""}{gbp(o.costs.ground)}
                       {o.ground.notes ? ` (${o.ground.notes})` : ""}
                       {other && (
                         <span className="block">
@@ -487,7 +500,11 @@ function ResultCard({ o, tz, req, labels, groundAlts, searchId }: { o: RouteOpti
               <table className="w-full text-sm">
                 <tbody className="[&_td]:py-1">
                   <tr>
-                    <td className="text-slate-600 dark:text-slate-400">{o.ground.mode === "not set" ? `Getting to ${o.ukAirport}` : `${modeLabel(o.ground.mode)} to ${o.ukAirport}`}{o.back && " and back"}</td>
+                    <td className="text-slate-600 dark:text-slate-400">
+                      {o.ground.mode === "not set" ? `Getting to ${o.ukAirport}` : `${modeLabel(o.ground.mode)} to ${o.ukAirport}`}
+                      {o.back && " and back"}
+                      {o.ground.estimated && " (estimate)"}
+                    </td>
                     <td className="tabular text-right">{o.ground.mode === "not set" ? "not added" : gbp(o.costs.ground)}</td>
                   </tr>
                   {o.costs.fares.map((f, i) => {
@@ -534,7 +551,10 @@ function initialDrafts(data: SearchResponse, req: SearchRequest): Record<string,
   }
   // Older saved drafts predate some fields (e.g. coach) or have travel times; keep just the prices.
   const drafts: Record<string, GroundDraft> = Object.fromEntries(
-    Object.entries(saved).map(([a, d]) => [a, { trainPerPerson: d.trainPerPerson ?? "", coachPerPerson: d.coachPerPerson ?? "", cabTotal: d.cabTotal ?? "", use: d.use ?? "cheapest" }]),
+    Object.entries(saved).map(([a, d]) => [
+      a,
+      { trainPerPerson: d.trainPerPerson ?? "", coachPerPerson: d.coachPerPerson ?? "", cabTotal: d.cabTotal ?? "", use: d.use ?? "cheapest", estimated: d.estimated === true },
+    ]),
   );
   for (const o of data.options) {
     const g = o.ground;
@@ -546,6 +566,13 @@ function initialDrafts(data: SearchResponse, req: SearchRequest): Record<string,
       ...(g.mode === "cab" && !g.per_person ? { cabTotal: String(g.cost_gbp) } : {}),
     };
   }
+  // Anything still empty starts from our distance-based estimate (train by default), marked as such.
+  if (req.originLatLon)
+    for (const a of new Set(data.options.map((o) => o.ukAirport))) {
+      if (drafts[a]) continue;
+      const e = estimateGround(req.originLatLon, a);
+      if (e) drafts[a] = { trainPerPerson: String(e.trainPerPerson), coachPerPerson: String(e.coachPerPerson), cabTotal: String(e.cabTotal), use: "train", estimated: true };
+    }
   return drafts;
 }
 
@@ -589,8 +616,11 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
   const options = useMemo(
     () =>
       shown.map((o) => {
-        const choice = pickGround(toInput(drafts[o.ukAirport] ?? EMPTY_DRAFT), pax);
-        return choice ? applyGround(o, choice, settings.uk_airport_arrival_mins, settings.uk_arrival_exit_mins ?? 60) : o;
+        const draft = drafts[o.ukAirport] ?? EMPTY_DRAFT;
+        const choice = pickGround(toInput(draft), pax);
+        if (!choice) return o;
+        const priced = applyGround(o, choice, settings.uk_airport_arrival_mins, settings.uk_arrival_exit_mins ?? 60);
+        return draft.estimated ? { ...priced, ground: { ...priced.ground, estimated: true } } : priced;
       }),
     [shown, drafts, pax, settings.uk_airport_arrival_mins, settings.uk_arrival_exit_mins],
   );

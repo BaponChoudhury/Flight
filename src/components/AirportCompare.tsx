@@ -38,7 +38,7 @@ export function AirportCompare({
     <section aria-label="Compare your airports" className="space-y-2">
       <div className="flex items-baseline justify-between gap-2 px-1">
         <h2 className="text-base font-bold">Compare your airports</h2>
-        <p className="text-xs text-slate-500">{anyGround ? "Totals include getting to each airport where added" : "Flights only — add your travel to each airport above"}</p>
+        <p className="text-xs text-slate-500">{anyGround ? "Door to door: totals include getting to each airport" : "Flights only — add your travel to each airport above"}</p>
       </div>
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {rows.map((r) => {
@@ -66,7 +66,7 @@ export function AirportCompare({
                 )}
               </div>
               <p className="text-xs text-slate-500">
-                {r.groundAdded ? `incl. ${gbp(r.cheapest.costs.ground)} to get there` : "flights only"} · {formatDuration(r.cheapest.totalMins)}
+                {r.groundAdded ? `incl. ${r.cheapest.ground.estimated ? "~" : ""}${gbp(r.cheapest.costs.ground)} to get there` : "flights only"} · {formatDuration(r.cheapest.totalMins)}
               </p>
               <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
                 Fastest {formatDuration(r.fastest.totalMins)} for {gbp(r.fastest.costs.total)} · {r.list.length} option{r.list.length === 1 ? "" : "s"}
