@@ -73,7 +73,8 @@ export function checkConnection(
   const minRequiredMins = opts.minBufferMins + extra;
   const maxMins = opts.allowOvernight ? s.overnight_max_buffer_mins : s.max_buffer_mins;
   const overnight = bufferMins >= 360 && crossesLocalMidnight(arriving.arriveUtc, departing.departUtc, hubTz);
-  const hotelGbp = overnight && opts.allowOvernight ? (s.hotel_gbp_by_hub[hub] ?? s.hotel_gbp_default) : 0;
+  // Hotels aren't offered yet, so an overnight stop adds nothing to the price.
+  const hotelGbp = 0;
 
   const connection: Connection = { airport: hub, bufferMins, minRequiredMins, terminalChange, overnight, hotelGbp };
   if (bufferMins < minRequiredMins) return { ok: false, reason: "too_short", connection };

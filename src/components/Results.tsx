@@ -364,7 +364,7 @@ function ConnectionStep({ c }: { c: NonNullable<RouteOption["connection"]> }) {
       <p className="text-sm text-slate-600 dark:text-slate-400">
         Needs at least {formatDuration(c.minRequiredMins)}
         {c.terminalChange && ` including a terminal change (${c.terminalChange.from} → ${c.terminalChange.to})`}
-        {c.overnight && (c.hotelGbp ? ` · overnight, hotel about ${gbp(c.hotelGbp)}` : " · overnight wait")}
+        {c.overnight && " · overnight wait"}
       </p>
     </li>
   );
@@ -546,7 +546,6 @@ function ResultCard({ o, tz, req, labels, groundAlts, searchId }: { o: RouteOpti
                     <tr><td className="text-slate-600 dark:text-slate-400">Checked bags ({req.bags} each)</td><td className="text-right">{o.costs.bagsUnknown ? "not confirmed" : "included"}</td></tr>
                   )}
                   {o.costs.excessBaggage > 0 && <tr><td className="text-slate-600 dark:text-slate-400">Likely excess baggage</td><td className="tabular text-right">{gbp(o.costs.excessBaggage)}</td></tr>}
-                  {o.costs.hotel > 0 && <tr><td className="text-slate-600 dark:text-slate-400">Hotel (estimate)</td><td className="tabular text-right">{gbp(o.costs.hotel)}</td></tr>}
                   <tr className="border-t border-slate-200 font-bold dark:border-slate-700">
                     <td className="pt-2">Total, {travellers(req)}</td>
                     <td className="tabular pt-2 text-right text-base">{gbp(o.costs.total)}</td>

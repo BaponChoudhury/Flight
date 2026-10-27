@@ -444,7 +444,7 @@ export function SearchForm({
             </div>
             <label className="flex items-center gap-2 text-sm sm:col-span-2 lg:col-span-4">
               <input type="checkbox" className="h-4 w-4" checked={req.allowOvernight} onChange={(e) => set("allowOvernight", e.target.checked)} />
-              Allow an overnight stop between flights (adds a hotel estimate)
+              Allow an overnight stop between flights
             </label>
           </div>
         )}
