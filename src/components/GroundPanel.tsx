@@ -1,6 +1,7 @@
 "use client";
 
 import { groundChoices, pickGround, type GroundInput, type GroundMode } from "@/lib/engine/rules";
+import { ESTIMATE_NOTE } from "@/lib/ground-estimate";
 import { groundLinks, type GroundLink } from "@/lib/ground-links";
 import { Icon } from "./ui";
 
@@ -56,6 +57,8 @@ export function GroundPanel({
   pax,
   onChange,
   returnTrip = false,
+  on,
+  onToggle,
 }: {
   originArea: string;
   airports: string[];
@@ -63,6 +66,8 @@ export function GroundPanel({
   pax: number;
   onChange: (airport: string, d: GroundDraft) => void;
   returnTrip?: boolean;
+  on: boolean;
+  onToggle: (on: boolean) => void;
 }) {
   const th = "px-1.5 py-1.5 text-left align-bottom font-medium";
   const rows = airports.map((a) => {
@@ -72,28 +77,44 @@ export function GroundPanel({
   const included = rows.filter((r) => r.chosen);
   const anyEstimated = included.some((r) => r.d.estimated);
   return (
-    <details className="group overflow-hidden rounded-2xl shadow-sm ring-1 ring-teal-600/30 dark:ring-teal-500/30">
-      <summary className="flex cursor-pointer list-none items-center gap-3 bg-gradient-to-r from-teal-600 to-emerald-600 p-4 text-white [&::-webkit-details-marker]:hidden">
+    <section className="overflow-hidden rounded-2xl shadow-sm ring-1 ring-teal-600/30 dark:ring-teal-500/30">
+      <div className="flex items-center gap-3 bg-gradient-to-r from-teal-600 to-emerald-600 p-4 text-white">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15">
           <Icon name="train" className="h-5 w-5" />
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-2 font-bold">
-            Door-to-door cost{originArea ? ` from ${originArea}` : ""}
-            {anyEstimated && <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-semibold">estimated</span>}
+            Compare door to door{originArea ? ` from ${originArea}` : ""}
+            {on && anyEstimated && <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-semibold">estimated</span>}
           </span>
           <span className="mt-0.5 block text-sm text-white/90">
-            {included.length
-              ? `${included.map((r) => `${LABEL[r.chosen!.mode]} to ${r.a} ${r.d.estimated ? "~" : ""}${gbp(r.chosen!.costGbp)}`).join(" · ")} — included in every price below`
-              : "Add your train, coach or cab fare to see what each trip really costs"}
+            {!on
+              ? "Prices below are flights only. Add getting to each airport to see which one really works out cheapest."
+              : included.length
+                ? `${included.map((r) => `${LABEL[r.chosen!.mode]} to ${r.a} ${r.d.estimated ? "~" : ""}${gbp(r.chosen!.costGbp)}`).join(" · ")}: included in every price below`
+                : "Add your train, coach or cab fare to see what each trip really costs"}
           </span>
         </span>
-        <span className="hidden shrink-0 items-center gap-1 rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-teal-700 shadow-sm group-open:hidden sm:inline-flex">
-          {anyEstimated ? "Use my fares" : "Edit"} <Icon name="chevronDown" className="h-4 w-4" />
-        </span>
-        <Icon name="chevronDown" className="h-5 w-5 shrink-0 text-white/80 transition group-open:rotate-180 sm:hidden sm:group-open:inline" />
+        <button
+          type="button"
+          role="switch"
+          aria-checked={on}
+          onClick={() => onToggle(!on)}
+          className="flex shrink-0 items-center gap-2 rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-teal-700 shadow-sm hover:bg-teal-50"
+        >
+          <span aria-hidden className={`relative h-4 w-7 rounded-full transition ${on ? "bg-teal-600" : "bg-slate-300"}`}>
+            <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${on ? "left-3.5" : "left-0.5"}`} />
+          </span>
+          {on ? "On" : "Turn on"}
+        </button>
+      </div>
+      {on && (
+      <details className="group bg-white dark:bg-slate-900">
+      <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-2.5 text-sm font-semibold text-teal-700 dark:text-teal-300 [&::-webkit-details-marker]:hidden">
+        {anyEstimated ? "These are typical fares: enter your own" : "Edit your fares"}
+        <Icon name="chevronDown" className="h-4 w-4 transition group-open:rotate-180" />
       </summary>
-      <div className="bg-white p-4 pt-3 dark:bg-slate-900">
+      <div className="px-4 pb-4">
       <p className="text-sm text-slate-600 dark:text-slate-400">
         {anyEstimated && "We've filled in typical fares for the distance from your home (train by default). "}
         Tap a link to check your real fare, then type it in. Results update straight away — no new search needed.
@@ -160,7 +181,10 @@ export function GroundPanel({
           })}
         </tbody>
       </table>
+      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">How we estimate: {ESTIMATE_NOTE}</p>
       </div>
-    </details>
+      </details>
+      )}
+    </section>
   );
 }

@@ -254,6 +254,16 @@ export function applyGround(o: RouteOption, choice: GroundChoice, ukArrivalMins:
   };
 }
 
+/** The option with getting to the airport taken out, as shown until the user turns on door to door. */
+export function withoutGround(o: RouteOption): RouteOption {
+  if (o.ground.mode === "not set" && !o.costs.ground) return o;
+  return {
+    ...o,
+    ground: { ...o.ground, mode: "not set", cost_gbp: 0, notes: "" },
+    costs: { ...o.costs, ground: 0, total: Math.round((o.costs.total - o.costs.ground) * 100) / 100 },
+  };
+}
+
 // ---------- Refundable filter (results page) ----------
 
 export const isRefundable = (o: RouteOption) => o.badges.includes("Refundable");
