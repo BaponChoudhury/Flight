@@ -20,18 +20,27 @@ export function straightKm(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 /**
- * Estimated fares from `home` to the airport `code` (any airport in our UK list, LON included).
- * Train: a typical advance/off-peak single. Coach: National Express-style single. Cab: whole car,
- * about £1.50 per road km plus a pick-up charge. Null for airports we have no position for.
+ * Fitted to published fares (checked Oct 2026), road km from our straight-line × 1.3:
+ * - Train, typical on-the-day single (Omio route averages): Leeds→MAN ~£18, Birmingham→MAN ~£24,
+ *   Leicester→Birmingham Intl ~£20–23. Advance tickets can be about half this.
+ * - Coach, National Express/Megabus averages (Omio): Leeds→MAN £4–7, Birmingham→Heathrow £8–25,
+ *   London→MAN ~£21.
+ * - Cab, pre-booked fixed-price saloon for the whole car: Coventry→Birmingham Airport £50–52
+ *   (metered ~£33), Bradford→MAN ~£80, Leeds→MAN ~£90, Birmingham→Heathrow £225–257.
+ *   No official UK average exists for pre-booked airport cabs; these are operators' listed fares.
  */
+export const ESTIMATE_NOTE =
+  "typical fares for the distance, from published route prices (train: on-the-day single; coach: average single; cab: pre-booked fixed fare for the car). Check yours with the links.";
+
+/** Estimated one-way fares from `home` to the airport `code`. Null for airports we have no position for. */
 export function estimateGround(home: { lat: number; lon: number }, code: string): GroundEstimate | null {
   const airport = UK_AIRPORTS.find((a) => a.code === code);
   if (!airport) return null;
   const roadKm = straightKm(home.lat, home.lon, airport.lat, airport.lon) * ROUTE_FACTOR;
   return {
-    trainPerPerson: Math.max(6, Math.round(5 + 0.18 * roadKm)),
-    coachPerPerson: Math.max(5, Math.round(3 + 0.07 * roadKm)),
-    cabTotal: Math.max(15, Math.round(4 + 1.5 * roadKm)),
+    trainPerPerson: Math.max(5, Math.round(8 + 0.12 * roadKm)),
+    coachPerPerson: Math.max(5, Math.round(3 + 0.05 * roadKm)),
+    cabTotal: Math.max(25, Math.round(15 + 1.05 * roadKm)),
     roadKm: Math.round(roadKm),
   };
 }

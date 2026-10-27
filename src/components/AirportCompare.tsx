@@ -17,10 +17,14 @@ export function AirportCompare({
   options,
   focused,
   onFocus,
+  doorToDoor,
+  onDoorToDoor,
 }: {
   options: RouteOption[];
   focused: string | null;
   onFocus: (airport: string | null) => void;
+  doorToDoor: boolean;
+  onDoorToDoor: () => void;
 }) {
   const groups = new Map<string, RouteOption[]>();
   for (const o of options) groups.set(o.ukAirport, [...(groups.get(o.ukAirport) ?? []), o]);
@@ -38,7 +42,15 @@ export function AirportCompare({
     <section aria-label="Compare your airports" className="space-y-2">
       <div className="flex items-baseline justify-between gap-2 px-1">
         <h2 className="text-base font-bold">Compare your airports</h2>
-        <p className="text-xs text-slate-500">{anyGround ? "Door to door: totals include getting to each airport" : "Flights only — add your travel to each airport above"}</p>
+        {anyGround ? (
+          <p className="text-xs text-slate-500">Door to door: totals include getting to each airport</p>
+        ) : doorToDoor ? (
+          <p className="text-xs text-slate-500">Flights only: add your fares to each airport above</p>
+        ) : (
+          <button type="button" onClick={onDoorToDoor} className="text-xs font-semibold text-teal-700 hover:underline dark:text-teal-300">
+            Flights only · a closer airport could save more: compare door to door
+          </button>
+        )}
       </div>
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {rows.map((r) => {

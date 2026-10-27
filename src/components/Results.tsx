@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { applyGround, groundChoices, pickGround, rankOptions, refundableView, valueScores, type GroundChoice } from "@/lib/engine/rules";
+import { applyGround, groundChoices, pickGround, rankOptions, refundableView, valueScores, withoutGround, type GroundChoice } from "@/lib/engine/rules";
 import { formatDuration, formatLocalDay, formatLocalTime, localDate } from "@/lib/engine/time";
 import type { Badge, BookingLink, FareTerms, FlightLeg, NormalisedSegment, ProviderId, RouteOption, SearchRequest, SearchResponse, Settings } from "@/lib/types";
 import { activeCount, applyFilters, facetsOf, NO_FILTERS, type Filters } from "@/lib/filters";
@@ -436,17 +436,20 @@ function ResultCard({ o, tz, req, labels, groundAlts, searchId }: { o: RouteOpti
               {req.adults + req.children > 1 ? `total, ${travellers(req)}` : "total per adult"}
               {o.back ? " · return" : ""}
             </p>
-            {o.ground.mode !== "not set" ? (
+            {o.ground.mode !== "not set" && (
               <p
-                title={`Door to door: includes ${o.ground.estimated ? "about " : ""}${gbp(o.costs.ground)} ${modeLabel(o.ground.mode).toLowerCase()} to ${o.ukAirport}${o.ground.estimated ? " (estimate)" : ""}`}
-                className="mt-0.5 inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-teal-50 px-1.5 py-0.5 text-[11px] font-medium text-teal-800 dark:bg-teal-900/30 dark:text-teal-200"
+                title={`Door to door: flights ${gbp(o.costs.total - o.costs.ground)} plus ${o.ground.estimated ? "about " : ""}${gbp(o.costs.ground)} ${modeLabel(o.ground.mode).toLowerCase()} to ${o.ukAirport}${o.back ? " and back" : ""}${o.ground.estimated ? " (estimate)" : ""}`}
+                className="mt-1 inline-flex flex-col rounded-md bg-teal-50 px-1.5 py-0.5 text-[11px] text-teal-800 sm:items-end dark:bg-teal-900/30 dark:text-teal-200"
               >
-                <Icon name="train" className="h-3 w-3" />
-                incl. {o.ground.estimated ? "~" : ""}
-                {gbp(o.costs.ground)} {modeLabel(o.ground.mode).toLowerCase()}
+                <span className="inline-flex items-center gap-1 font-bold uppercase tracking-wide">
+                  <Icon name="train" className="h-3 w-3" />
+                  Door to door
+                </span>
+                <span className="whitespace-nowrap">
+                  flights {gbp(o.costs.total - o.costs.ground)} + {o.ground.estimated ? "~" : ""}
+                  {gbp(o.costs.ground)} {modeLabel(o.ground.mode).toLowerCase()}
+                </span>
               </p>
-            ) : (
-              <p className="mt-0.5 text-[11px] text-slate-500">flights only</p>
             )}
           </div>
           <button
@@ -616,6 +619,8 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
   const pax = req.adults + req.children;
   const airports = useMemo(() => [...new Set(data.options.map((o) => o.ukAirport))].sort(), [data.options]);
   const [drafts, setDrafts] = useState<Record<string, GroundDraft>>({});
+  // Off by default: prices start as flights only, like other sites, and the user opts in.
+  const [doorToDoor, setDoorToDoor] = useState(false);
   useEffect(() => setDrafts(initialDrafts(data, req)), [data, req]);
   function updateDraft(airport: string, d: GroundDraft) {
     const next = { ...drafts, [airport]: d };
@@ -641,13 +646,14 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
   const options = useMemo(
     () =>
       shown.map((o) => {
+        if (!doorToDoor) return withoutGround(o);
         const draft = drafts[o.ukAirport] ?? EMPTY_DRAFT;
         const choice = pickGround(toInput(draft), pax);
-        if (!choice) return o;
+        if (!choice) return withoutGround(o);
         const priced = applyGround(o, choice, settings.uk_airport_arrival_mins, settings.uk_arrival_exit_mins ?? 60);
         return draft.estimated ? { ...priced, ground: { ...priced.ground, estimated: true } } : priced;
       }),
-    [shown, drafts, pax, settings.uk_airport_arrival_mins, settings.uk_arrival_exit_mins],
+    [shown, doorToDoor, drafts, pax, settings.uk_airport_arrival_mins, settings.uk_arrival_exit_mins],
   );
   const facets = useMemo(() => (options.length ? facetsOf(options) : null), [options]);
   const filtered = useMemo(() => applyFilters(options, filters, data.airportTz), [options, filters, data.airportTz]);
@@ -721,9 +727,9 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
           </aside>
 
           <div className="min-w-0 space-y-4">
-            <GroundPanel originArea={req.originArea} airports={airports} drafts={drafts} pax={pax} onChange={updateDraft} returnTrip={!!req.returnDate} />
+            <GroundPanel originArea={req.originArea} airports={airports} drafts={drafts} pax={pax} onChange={updateDraft} returnTrip={!!req.returnDate} on={doorToDoor} onToggle={setDoorToDoor} />
 
-            <AirportCompare options={comparable} focused={focusedAirport} onFocus={focusAirport} />
+            <AirportCompare options={comparable} focused={focusedAirport} onFocus={focusAirport} doorToDoor={doorToDoor} onDoorToDoor={() => setDoorToDoor(true)} />
 
             {filtered.length === 0 ? (
               <div className={`${card} p-6 text-center`}>
