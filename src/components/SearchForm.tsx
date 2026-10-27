@@ -232,9 +232,8 @@ export function SearchForm({
         <Field icon="landing" label="To" htmlFor="to">
           <AirportPicker
             id="to"
-            country="IN"
             inputClassName={bare}
-            placeholder="City or airport in India"
+            placeholder="City or airport, anywhere"
             initial={{ code: "GAU", city: "Guwahati", name: "Lokpriya Gopinath Bordoloi International Airport", country: "IN", lat: 0, lon: 0 }}
             onChange={setDest}
           />

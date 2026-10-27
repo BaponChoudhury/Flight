@@ -15,7 +15,7 @@ function travellerText(r: SearchRequest) {
 
 const SEARCH_STEPS = [
   "Checking airline tickets from your airports",
-  "Looking for split tickets via Delhi, Mumbai, Bengaluru and other hubs",
+  "Looking for cheaper split tickets",
   "Comparing prices from two flight sources",
   "Checking connection times, terminals and baggage",
   "Putting the best options together",
@@ -109,9 +109,9 @@ export function SearchApp() {
         <div className="relative mx-auto max-w-6xl">
           {!compact ? (
             <>
-              <h1 className="max-w-2xl text-3xl font-bold tracking-tight sm:text-4xl">Fly from the UK to anywhere in India — for less.</h1>
+              <h1 className="max-w-2xl text-3xl font-bold tracking-tight sm:text-4xl">Fly from the UK to anywhere — for less.</h1>
               <p className="mt-2 max-w-2xl text-base text-white/75 sm:text-lg">
-                We compare airline tickets with smart split tickets via Indian hubs that other sites miss, and check every connection for you.
+                We compare airline tickets from two flight sources, add smart split tickets via Indian hubs for trips to India, and check every connection for you.
               </p>
               <ul className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-white/80">
                 {["Two flight sources compared", "Safe connection times checked", "Bags included in the price"].map((t) => (

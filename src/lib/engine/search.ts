@@ -239,6 +239,8 @@ interface Deps {
   provider: FlightProvider;
   /** Extra providers searched for through tickets only (Aviasales), in parallel with everything else. */
   throughProviders?: FlightProvider[];
+  /** False when the destination is outside India: split tickets via Indian hubs only make sense for India. */
+  destInIndia?: boolean;
   now?: () => number;
 }
 
@@ -285,8 +287,9 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
     ? req.ukAirports
     : config.airports.filter((a) => a.role === "uk_origin" && a.enabled).map((a) => a.iata);
   const allHubs = config.airports.filter((a) => a.role === "india_hub" && a.enabled).map((a) => a.iata);
-  const hubs = refundableOnly ? [] : hubsToSearch(allHubs, req.dest, config.hubRoutes, s.hub_route_recheck_days);
-  const skippedHubs = allHubs.filter((h) => !hubs.includes(h) && h !== req.dest);
+  const viaIndia = deps.destInIndia ?? true;
+  const hubs = refundableOnly || !viaIndia ? [] : hubsToSearch(allHubs, req.dest, config.hubRoutes, s.hub_route_recheck_days);
+  const skippedHubs = viaIndia ? allHubs.filter((h) => !hubs.includes(h) && h !== req.dest) : [];
   if (refundableOnly) {
     if (extraProviders.length)
       notes.push("Refundable tickets only: these fares come from Aviasales, the only source with refund rules. Split tickets built from separate searches aren't included.");

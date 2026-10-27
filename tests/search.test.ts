@@ -141,6 +141,21 @@ describe("runSearch (fake Ignav)", () => {
     expect(bodies.every((b) => (b as { min_checked_bags?: number }).min_checked_bags === undefined)).toBe(true);
   });
 
+  it("searches only through tickets when the destination is outside India", async () => {
+    const routes: string[] = [];
+    const spy: FlightProvider = {
+      ...fakeIgnav,
+      searchOneWay: async (o, d, date, f, ctx) => {
+        routes.push(`${o}-${d}`);
+        return fakeIgnav.searchOneWay(o, d, date, f, ctx);
+      },
+    };
+    const res = await runSearch({ ...req, dest: "JFK", date: "2026-12-14" }, { store, provider: spy, destInIndia: false });
+    expect(routes.length).toBeGreaterThan(0);
+    expect(routes.every((r) => r.endsWith("-JFK"))).toBe(true);
+    expect(res.options.every((o) => o.kind !== "split")).toBe(true);
+  });
+
   it("stays under 60 provider calls for a ±0 day search and finds both strategies", async () => {
     const res = await runSearch(req, { store, provider: fakeIgnav });
     expect(res.errors).toEqual([]);
