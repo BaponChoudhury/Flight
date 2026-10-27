@@ -68,8 +68,8 @@ All tables have row-level security enabled with no policies, so the public anon 
    - Hubs with no flights are recorded in `hub_routes` and skipped for 30 days.
 5. **Combine** each international leg with each domestic leg where:
    - buffer ≥ the "time to change from international to domestic flight" on the form (default 3h, 1–12h allowed), plus a terminal change if any (DEL T3→T1 and BOM T2→T1 add 45m);
-   - buffer ≤ 14h, or ≤ 24h with "Allow an overnight stop", which adds a hotel estimate.
-6. **Cost** = ground + all fares (bag-inclusive, from Ignav) + hotel. **Time** = leave home → final arrival. Leaving home is set by your airport arrival buffer (`uk_airport_arrival_mins`, default 3h) plus the ground travel time.
+   - buffer ≤ 14h, or ≤ 24h with "Allow an overnight stop" (no hotel cost is added: hotels aren't offered yet).
+6. **Cost** = ground + all fares (bag-inclusive, from Ignav). **Time** = leave home → final arrival. Leaving home is set by your airport arrival buffer (`uk_airport_arrival_mins`, default 3h) plus the ground travel time.
 7. **Ranking** shows the cheapest and fastest options, plus the top 10 by "best value" (a price-vs-time slider). Options with an unknown bag price rank lower.
 
 ### Calls and caching

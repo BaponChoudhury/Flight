@@ -39,14 +39,14 @@ describe("connection buffers", () => {
     expect(r.ok).toBe(false);
   });
 
-  it("enforces the 14h max unless overnight is allowed, and prices the hotel", () => {
+  it("enforces the 14h max unless overnight is allowed, and adds no hotel cost", () => {
     // Arrive 11:00 IST, depart next morning 07:00 IST = 20h, crosses midnight.
     const late = dom("2026-12-12T01:30:00Z");
     expect(checkConnection(intl, late, "DEL", IST, config, opts)).toMatchObject({ ok: false, reason: "too_long" });
     const r = checkConnection(intl, late, "DEL", IST, config, { ...opts, allowOvernight: true });
     expect(r.ok).toBe(true);
     expect(r.connection.overnight).toBe(true);
-    expect(r.connection.hotelGbp).toBe(40);
+    expect(r.connection.hotelGbp).toBe(0);
   });
 });
 
