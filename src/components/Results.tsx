@@ -7,7 +7,7 @@ import type { Badge, BookingLink, FareTerms, FlightLeg, NormalisedSegment, Provi
 import { activeCount, applyFilters, facetsOf, NO_FILTERS, type Filters } from "@/lib/filters";
 import { AirportCompare } from "./AirportCompare";
 import { FilterPanel } from "./FilterPanel";
-import { FollowupOptIn } from "./FollowupOptIn";
+import { FollowupOptIn, type OptedIn } from "./FollowupOptIn";
 import { EMPTY_DRAFT, GroundPanel, toInput, type GroundDraft } from "./GroundPanel";
 import { airlineName } from "@/lib/airline-names";
 import { estimateGround } from "@/lib/ground-estimate";
@@ -140,7 +140,21 @@ function JourneyRow({ legs, tz, hub, separate }: { legs: FlightLeg[]; tz: Tz; hu
   );
 }
 
-function LegBlock({ leg, tz, req, searchId }: { leg: FlightLeg; tz: Tz; req: SearchRequest; searchId: string }) {
+function LegBlock({
+  leg,
+  tz,
+  req,
+  searchId,
+  prompt,
+  onWhereToBook,
+}: {
+  leg: FlightLeg;
+  tz: Tz;
+  req: SearchRequest;
+  searchId: string;
+  prompt?: React.ReactNode;
+  onWhereToBook?: () => void;
+}) {
   const it = leg.itinerary;
   const [links, setLinks] = useState<BookingLink[] | null>(null);
   const [lower, setLower] = useState<LowerPriceView | null>(null);
@@ -152,6 +166,7 @@ function LegBlock({ leg, tz, req, searchId }: { leg: FlightLeg; tz: Tz; req: Sea
 
   async function loadLinks() {
     setState("loading");
+    onWhereToBook?.();
     const res = await fetch("/api/booking-links", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -206,6 +221,7 @@ function LegBlock({ leg, tz, req, searchId }: { leg: FlightLeg; tz: Tz; req: Sea
           {[it.seller && `Price from ${it.seller}`, it.fareTerms && fareTermsText(it.fareTerms)].filter(Boolean).join(" · ")}
         </p>
       )}
+      {prompt && (state !== "idle" || links !== null) && <div className="mt-2">{prompt}</div>}
       <div className="mt-2">
         {leg.bundled ? (
           <p className="text-sm text-slate-500">Booked together with the flight above.</p>
@@ -380,6 +396,10 @@ const LABEL_STYLE: Record<string, string> = {
 function ResultCard({ o, tz, req, labels, groundAlts, searchId }: { o: RouteOption; tz: Tz; req: SearchRequest; labels: string[]; groundAlts: GroundChoice[]; searchId: string }) {
   const other = groundAlts.find((g) => g.mode !== o.ground.mode);
   const [open, setOpen] = useState(false);
+  // One opt-in per trip, shown in the details and again when the traveller asks where to book.
+  const [optedIn, setOptedIn] = useState<OptedIn | null>(null);
+  const [prompted, setPrompted] = useState(false);
+  const optIn = (prompt: boolean) => <FollowupOptIn o={o} searchId={searchId} done={optedIn} onDone={setOptedIn} prompt={prompt} />;
   const destTz = tz[o.dest] ?? "Asia/Kolkata";
   // Home-side times are shown in the departure airport's timezone (not always the UK).
   const homeTz = tz[o.ukAirport] ?? UK_TZ;
@@ -473,9 +493,9 @@ function ResultCard({ o, tz, req, labels, groundAlts, searchId }: { o: RouteOpti
                     </>
                   )}
                 </PointStep>
-                <LegBlock leg={o.legs[0]} tz={tz} req={req} searchId={searchId} />
+                <LegBlock leg={o.legs[0]} tz={tz} req={req} searchId={searchId} prompt={optIn(true)} onWhereToBook={() => setPrompted(true)} />
                 {c && <ConnectionStep c={c} />}
-                {o.legs.slice(1).map((l, i) => <LegBlock key={`${l.itinerary.providerRef}-${i}`} leg={l} tz={tz} req={req} searchId={searchId} />)}
+                {o.legs.slice(1).map((l, i) => <LegBlock key={`${l.itinerary.providerRef}-${i}`} leg={l} tz={tz} req={req} searchId={searchId} prompt={optIn(true)} onWhereToBook={() => setPrompted(true)} />)}
                 <PointStep icon="pin" tone="emerald" title={`Arrive ${o.dest} ${when(o.arriveUtc, destTz)}`} />
               </ol>
 
@@ -483,9 +503,9 @@ function ResultCard({ o, tz, req, labels, groundAlts, searchId }: { o: RouteOpti
                 <>
                   <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500">Return</h3>
                   <ol className={timeline}>
-                    <LegBlock leg={o.back.legs[0]} tz={tz} req={req} searchId={searchId} />
+                    <LegBlock leg={o.back.legs[0]} tz={tz} req={req} searchId={searchId} prompt={optIn(true)} onWhereToBook={() => setPrompted(true)} />
                     {o.back.connection && <ConnectionStep c={o.back.connection} />}
-                    {o.back.legs.slice(1).map((l, i) => <LegBlock key={`back-${l.itinerary.providerRef}-${i}`} leg={l} tz={tz} req={req} searchId={searchId} />)}
+                    {o.back.legs.slice(1).map((l, i) => <LegBlock key={`back-${l.itinerary.providerRef}-${i}`} leg={l} tz={tz} req={req} searchId={searchId} prompt={optIn(true)} onWhereToBook={() => setPrompted(true)} />)}
                     <PointStep icon="home" title={`Out of the airport ${when(o.back.arriveHomeUtc, backHomeTz)}`}>
                       {o.ground.mode === "not set"
                         ? `About 1h to get through ${o.back.legs[o.back.legs.length - 1].itinerary.dest} airport; travel home not added yet.`
@@ -532,7 +552,7 @@ function ResultCard({ o, tz, req, labels, groundAlts, searchId }: { o: RouteOpti
               </table>
               <p className="mt-2 text-xs text-slate-500">Price as of {formatLocalTime(o.priceAsOf, UK_TZ)} UK time. Fares change — check before booking.</p>
             </div>
-            <FollowupOptIn o={o} searchId={searchId} />
+            {(!prompted || optedIn) && optIn(false)}
             </div>
           </div>
         </div>

@@ -169,7 +169,7 @@ Passengers whose flight was delayed, cancelled or overbooked can claim compensat
 
 Travellers can opt in, from any result's details ("Free compensation check for this trip"), to one email the day after their trip with a quick link to claim if a flight was delayed 3+ hours, cancelled, or they were denied boarding.
 
-- **Opt-in:** email address plus a consent tick. The trip's flights come from the result. Saved in `trip_followups` with a send date of the day after the last flight lands.
+- **Opt-in:** email address plus a consent tick, offered in the result's details and again, as "Before you book: free compensation check", right above the booking links when the traveller clicks **Where to book**. The two are linked, so opting in once shows "You're in" in both, and booking is never blocked. The trip's flights come from the result. Saved in `trip_followups` with a send date of the day after the last flight lands.
 - **Daily job:** `vercel.json` runs `/api/cron/followups` at 09:00 UTC. Vercel's free plan allows a daily job. It's protected by `CRON_SECRET`, which Vercel sends automatically once the variable is set.
 - **The email** (sent through [Resend](https://resend.com)) lists each flight with a "Check this flight" button that opens Compensair's claim form pre-filled (their documented `#param=` links), plus an unsubscribe link and one-click unsubscribe headers.
 - **Privacy:** the email address is wiped once the email is sent or the traveller unsubscribes. Admin shows addresses partly hidden.
