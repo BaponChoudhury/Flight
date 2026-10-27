@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { nearestUkAirports } from "@/lib/config/places";
+import { airportNamed, haversineKm, nearestUkAirports } from "@/lib/config/places";
 import { locate } from "@/lib/locate";
 
 export const runtime = "nodejs";
@@ -11,7 +11,12 @@ export async function GET(request: Request) {
   try {
     const place = await locate(q);
     if (!place) return NextResponse.json({ error: `Couldn't find "${q}" in the UK. Try a nearby town or a postcode.` }, { status: 404 });
-    return NextResponse.json({ place, airports: nearestUkAirports(place.lat, place.lon) });
+    const airports = nearestUkAirports(place.lat, place.lon);
+    // Typed an airport's name ("Luton", "Gatwick")? Offer that airport first.
+    const named = airportNamed(q);
+    if (named && !airports.some((a) => a.code === named.code))
+      airports.unshift({ code: named.code, name: named.name, km: Math.round(haversineKm(place.lat, place.lon, named.lat, named.lon)) });
+    return NextResponse.json({ place, airports });
   } catch {
     return NextResponse.json({ error: "Location lookup isn't available right now — pick your airports below." }, { status: 502 });
   }

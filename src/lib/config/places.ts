@@ -63,6 +63,21 @@ export interface NearbyAirport {
  * The nearest `count` suggested regional airports (within `maxKm`), plus
  * London, which has by far the most flights to India.
  */
+/**
+ * A UK airport the user typed by name or code ("Luton", "Gatwick", "LTN"), if exactly one
+ * matches. "London" alone matches several, so it returns nothing (London is always offered).
+ */
+const GENERIC_WORDS = new Set(["london", "city", "east", "international", "airport"]);
+
+export function airportNamed(q: string): UkAirport | null {
+  const t = q.trim().toLowerCase().replace(/\s+airport$/, "");
+  if (t.length < 3 || GENERIC_WORDS.has(t)) return null;
+  const hits = UK_AIRPORTS.filter(
+    (a) => a.code !== LONDON && (a.code.toLowerCase() === t || a.name.toLowerCase() === t || a.name.toLowerCase().split(/\s+/).includes(t)),
+  );
+  return hits.length === 1 ? hits[0] : null;
+}
+
 export function nearestUkAirports(lat: number, lon: number, count = 2, maxKm = 250): NearbyAirport[] {
   const withKm = UK_AIRPORTS.filter((a) => a.suggest).map((a) => ({ code: a.code, name: a.name, km: Math.round(haversineKm(lat, lon, a.lat, a.lon)) }));
   const regional = withKm.filter((a) => a.code !== LONDON && a.km <= maxKm).sort((a, b) => a.km - b.km).slice(0, count);
