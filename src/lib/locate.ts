@@ -27,15 +27,30 @@ export async function locate(q: string): Promise<Located | null> {
     if (r.status === 200 && p?.latitude != null && p.longitude != null) return { name: p.outcode, lat: p.latitude, lon: p.longitude };
   }
   const r = await get(`${base}/places?q=${encodeURIComponent(q)}&limit=10`);
-  const places = (r.result as { name_1: string; latitude: number; longitude: number; local_type: string; county_unitary: string | null }[] | null) ?? [];
-  if (!places.length) return null;
-  // Prefer a settlement whose name matches what was typed.
-  const wanted = q.trim().toLowerCase();
-  const settlement = /city|town|village|hamlet|suburban/i;
-  const best =
-    places.find((p) => p.name_1.toLowerCase() === wanted && settlement.test(p.local_type)) ??
-    places.find((p) => settlement.test(p.local_type)) ??
-    places[0];
-  return { name: best.county_unitary ? `${best.name_1}, ${best.county_unitary}` : best.name_1, lat: best.latitude, lon: best.longitude };
+  const best = pickPlace((r.result as Place[] | null) ?? [], q);
+  return best ? { name: best.county_unitary ? `${best.name_1}, ${best.county_unitary}` : best.name_1, lat: best.latitude, lon: best.longitude } : null;
 }
 
+export interface Place {
+  name_1: string;
+  latitude: number;
+  longitude: number;
+  local_type: string;
+  county_unitary: string | null;
+}
+
+// Bigger places first: "Luton" should mean the town in Bedfordshire, not the village in Devon.
+const SIZE = ["city", "town", "suburban area", "village", "hamlet", "other settlement"];
+const sizeRank = (p: Place) => {
+  const i = SIZE.indexOf(p.local_type.toLowerCase());
+  return i === -1 ? SIZE.length : i;
+};
+
+/** The place the user most likely meant: an exact name match if there is one, then the largest settlement. */
+export function pickPlace(places: Place[], q: string): Place | null {
+  if (!places.length) return null;
+  const wanted = q.trim().toLowerCase();
+  const exact = places.filter((p) => p.name_1.toLowerCase() === wanted);
+  const pool = exact.length ? exact : places;
+  return [...pool].sort((a, b) => sizeRank(a) - sizeRank(b))[0];
+}

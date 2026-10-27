@@ -46,3 +46,28 @@ describe("infants and bags without a weight", () => {
     expect(b).toMatchObject({ status: "included", excessRisk: true, excessGbp: 0, includedKg: 15 });
   });
 });
+
+describe("finding what the user typed", () => {
+  it("prefers the bigger place when several share the name (Luton, Bedfordshire over Luton, Devon)", async () => {
+    const { pickPlace } = await import("@/lib/locate");
+    const devon = { name_1: "Luton", latitude: 50.8, longitude: -3.3, local_type: "Village", county_unitary: "Devon" };
+    const beds = { name_1: "Luton", latitude: 51.88, longitude: -0.42, local_type: "Town", county_unitary: "Luton" };
+    const lutonHoo = { name_1: "Luton Hoo", latitude: 51.85, longitude: -0.4, local_type: "Other Settlement", county_unitary: "Central Bedfordshire" };
+    expect(pickPlace([devon, lutonHoo, beds], "Luton")).toBe(beds);
+    expect(pickPlace([devon, lutonHoo, beds], "luton ")).toBe(beds);
+    expect(pickPlace([lutonHoo, devon], "Lut")).toBe(devon); // no exact match: largest settlement
+    expect(pickPlace([], "Luton")).toBeNull();
+  });
+
+  it("recognises an airport typed by name or code", async () => {
+    const { airportNamed } = await import("@/lib/config/places");
+    expect(airportNamed("Luton")?.code).toBe("LTN");
+    expect(airportNamed("Gatwick airport")?.code).toBe("LGW");
+    expect(airportNamed("heathrow")?.code).toBe("LHR");
+    expect(airportNamed("LTN")?.code).toBe("LTN");
+    expect(airportNamed("Manchester")?.code).toBe("MAN");
+    expect(airportNamed("London")).toBeNull(); // several London airports; "London (all airports)" is always offered
+    expect(airportNamed("City")).toBeNull();
+    expect(airportNamed("Stafford")).toBeNull();
+  });
+});
