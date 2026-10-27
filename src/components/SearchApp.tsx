@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { AirportRecord } from "@/lib/airports-index";
+import { FlightArc, PopularRoutes, WhyUs } from "./Landing";
 import type { AppConfig, SearchRequest, SearchResponse } from "@/lib/types";
 import { Results } from "./Results";
 import { SearchForm } from "./SearchForm";
@@ -66,6 +68,11 @@ export function SearchApp() {
   const [error, setError] = useState("");
   const [result, setResult] = useState<{ data: SearchResponse; req: SearchRequest } | null>(null);
   const [editing, setEditing] = useState(false);
+  const [destPreset, setDestPreset] = useState<{ airport: AirportRecord; n: number } | null>(null);
+  function pickDestination(airport: AirportRecord) {
+    setDestPreset((p) => ({ airport, n: (p?.n ?? 0) + 1 }));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   useEffect(() => {
     fetch("/api/config")
@@ -97,26 +104,36 @@ export function SearchApp() {
     }
   }
 
-  const form = config ? <SearchForm config={config} busy={busy} onSearch={search} /> : !error && <p className="p-6 text-slate-500">Loading…</p>;
+  const form = config ? <SearchForm config={config} busy={busy} onSearch={search} destPreset={destPreset} /> : !error && <p className="p-6 text-slate-500">Loading…</p>;
   const compact = !!result || busy;
   const r = result?.req;
 
   return (
     <>
       {/* Full-bleed brand band behind the search card. */}
-      <div className="relative bg-brand-950 px-4 pb-24 pt-8 text-white sm:pt-12">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60rem_25rem_at_80%_-10%,rgba(59,102,245,0.45),transparent)]" />
+      <div className={`relative overflow-hidden bg-brand-950 px-4 text-white ${compact ? "pb-24 pt-8 sm:pt-10" : "pb-32 pt-10 sm:pb-36 sm:pt-16"}`}>
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(55rem_28rem_at_85%_-10%,rgba(59,102,245,0.5),transparent),radial-gradient(40rem_22rem_at_-5%_110%,rgba(233,154,18,0.16),transparent)]" />
+        <div className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:radial-gradient(white_1px,transparent_1px)] [background-size:22px_22px]" />
+        {!compact && <FlightArc />}
         <div className="relative mx-auto max-w-6xl">
           {!compact ? (
             <>
-              <h1 className="max-w-2xl text-3xl font-bold tracking-tight sm:text-4xl">Fly from the UK to anywhere — for less.</h1>
-              <p className="mt-2 max-w-2xl text-base text-white/75 sm:text-lg">
-                We compare airline tickets from two flight sources, add smart split tickets via Indian hubs for trips to India, and check every connection for you.
+              <p className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white/85 ring-1 ring-white/15">
+                <span className="h-1.5 w-1.5 rounded-full bg-accent-300" />
+                UK to India · Pakistan · Bangladesh · Sri Lanka
               </p>
-              <ul className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-white/80">
-                {["Two flight sources compared", "Safe connection times checked", "Bags included in the price"].map((t) => (
-                  <li key={t} className="flex items-center gap-1.5">
-                    <Icon name="check" className="h-4 w-4 text-brand-300" strokeWidth={2.4} />
+              <h1 className="mt-4 max-w-3xl font-display text-4xl font-medium leading-[1.05] tracking-tight sm:text-6xl">
+                Cheaper flights <em className="font-display italic text-accent-300">home</em> to South Asia
+              </h1>
+              <p className="mt-4 max-w-xl text-base leading-relaxed text-white/75 sm:text-lg">
+                We compare two flight sources, find split tickets other sites miss, and check every connection, so you get there for less.
+              </p>
+              <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm text-white/80">
+                {["Bags included in the price", "Safe connection times", "Door-to-door costs"].map((t) => (
+                  <li key={t} className="flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/20">
+                      <Icon name="check" className="h-3 w-3 text-accent-300" strokeWidth={3} />
+                    </span>
                     {t}
                   </li>
                 ))}
@@ -148,20 +165,26 @@ export function SearchApp() {
         </div>
       </div>
 
-      <div className="relative -mt-20 mx-auto max-w-6xl px-4">
+      <div className={`relative mx-auto max-w-6xl px-4 ${compact ? "-mt-20" : "-mt-24"}`}>
         {!hasApiKey && (
           <p role="alert" className="mb-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-100">
             IGNAV_API_KEY isn&apos;t set on the server, so searches will fail. See the README.
           </p>
         )}
         {/* The form stays mounted (keeps what was typed) and is hidden behind the summary once results are in. */}
-        <div className={`${card} p-4 shadow-xl shadow-brand-950/10 sm:p-6 ${compact && !editing && result ? "hidden" : ""}`}>{form}</div>
+        <div className={`${card} p-4 shadow-2xl shadow-brand-950/15 sm:p-6 ${compact && !editing && result ? "hidden" : ""}`}>{form}</div>
         {error && (
           <p role="alert" className="mt-4 flex items-start gap-2 rounded-xl bg-rose-50 p-3 text-rose-900 ring-1 ring-rose-200 dark:bg-rose-900/30 dark:text-rose-100 dark:ring-rose-900">
             <Icon name="alert" className="mt-0.5 h-5 w-5 shrink-0" /> {error}
           </p>
         )}
         {busy && <Searching />}
+        {!compact && (
+          <>
+            <PopularRoutes onPick={pickDestination} />
+            <WhyUs />
+          </>
+        )}
         {!busy && result && config && (
           <div className="mt-6">
             <Results data={result.data} req={result.req} settings={config.settings} />

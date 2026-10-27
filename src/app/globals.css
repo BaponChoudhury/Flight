@@ -13,7 +13,13 @@
   --color-brand-800: #1d3299;
   --color-brand-900: #1c2f78;
   --color-brand-950: #121c47;
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Warm accent (marigold), used sparingly: one word in the headline, small highlights. */
+  --color-accent-200: #fde4a8;
+  --color-accent-300: #fbcf6b;
+  --color-accent-400: #f6b73c;
+  --color-accent-500: #e99a12;
+  --font-display: var(--font-fraunces), ui-serif, Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-inter), "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 :root {

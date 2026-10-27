@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
+import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -7,11 +8,15 @@ export const metadata: Metadata = {
   description: "Cheapest and fastest door-to-door routes from the UK to smaller Indian cities, including split tickets.",
 };
 
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+// Display serif for headlines only.
+const fraunces = Fraunces({ subsets: ["latin"], variable: "--font-fraunces", style: ["normal", "italic"], display: "swap" });
+
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#1c2f78" };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${inter.variable} ${fraunces.variable}`}>
       <body className="min-h-screen antialiased">
         <header className="bg-brand-950 text-white">
           <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
@@ -21,11 +26,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                   <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z" />
                 </svg>
               </span>
-              <span className="text-lg font-bold tracking-tight">Flights to India</span>
+              <span className="whitespace-nowrap text-lg font-bold tracking-tight">Flights to India</span>
             </Link>
             <div className="flex items-center gap-1">
               <Link href="/claim" className="rounded-lg px-3 py-1.5 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white">
-                Claim compensation
+                <span className="sm:hidden">Claim</span>
+                <span className="hidden sm:inline">Claim compensation</span>
               </Link>
               <Link href="/admin" className="rounded-lg px-3 py-1.5 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white">
                 Admin

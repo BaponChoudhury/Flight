@@ -54,6 +54,35 @@ function Segmented<T extends string>({ value, options, onChange, label }: { valu
   );
 }
 
+/** One-way / Return as proper tabs: the first choice a traveller makes, so it reads like one. */
+function TripTabs({ value, onChange }: { value: "oneway" | "return"; onChange: (v: "oneway" | "return") => void }) {
+  const tabs: ["oneway" | "return", string, IconName][] = [
+    ["oneway", "One-way", "arrowRight"],
+    ["return", "Return", "swap"],
+  ];
+  return (
+    <div role="radiogroup" aria-label="Trip type" className="inline-flex rounded-2xl bg-slate-100 p-1 ring-1 ring-slate-200/70 dark:bg-slate-800/80 dark:ring-slate-700">
+      {tabs.map(([v, text, icon]) => (
+        <button
+          key={v}
+          type="button"
+          role="radio"
+          aria-checked={value === v}
+          onClick={() => onChange(v)}
+          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition sm:px-5 ${
+            value === v
+              ? "bg-brand-600 text-white shadow-md shadow-brand-600/25"
+              : "text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white"
+          }`}
+        >
+          <Icon name={icon} className="h-4 w-4" strokeWidth={2.2} />
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Stepper({ label, hint, value, min, max, onChange }: { label: string; hint?: string; value: number; min: number; max: number; onChange: (n: number) => void }) {
   const btn = "flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 text-slate-700 disabled:opacity-30 dark:border-slate-600 dark:text-slate-200";
   return (
@@ -79,10 +108,13 @@ export function SearchForm({
   config,
   busy,
   onSearch,
+  destPreset,
 }: {
   config: AppConfig;
   busy: boolean;
   onSearch: (req: SearchRequest) => void;
+  /** A destination picked elsewhere on the page (popular routes); `n` changes on every pick. */
+  destPreset?: { airport: AirportRecord; n: number } | null;
 }) {
   const [fromMode, setFromMode] = useState<"uk" | "any">("uk");
   const [picked, setPicked] = useState<AirportRecord[]>([]);
@@ -98,6 +130,9 @@ export function SearchForm({
   const [paxOpen, setPaxOpen] = useState(false);
   const paxRef = useRef<HTMLDivElement>(null);
   const [tripType, setTripType] = useState<"oneway" | "return">("oneway");
+  useEffect(() => {
+    if (destPreset) setDest(destPreset.airport.code);
+  }, [destPreset]);
   const [returnDate, setReturnDate] = useState("");
   const [bufferHours, setBufferHours] = useState(String(config.settings.min_buffer_mins / 60));
   const [req, setReq] = useState<Omit<SearchRequest, "originArea" | "dest" | "ukAirports">>({
@@ -181,9 +216,12 @@ export function SearchForm({
 
   return (
     <form onSubmit={submit}>
-      <div className="flex flex-wrap items-center gap-2">
-        <Segmented label="Trip type" value={tripType} onChange={setTripType} options={[["oneway", "One-way"], ["return", "Return"]]} />
-        <Segmented label="Where from" value={fromMode} onChange={setFromMode} options={[["uk", "From the UK"], ["any", "Any airport"]]} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <TripTabs value={tripType} onChange={setTripType} />
+        <div className="flex items-center gap-2">
+          <span className="hidden text-xs font-medium text-slate-500 sm:inline dark:text-slate-400">Flying from</span>
+          <Segmented label="Where from" value={fromMode} onChange={setFromMode} options={[["uk", "The UK"], ["any", "Any airport"]]} />
+        </div>
       </div>
 
       <div className={`mt-4 grid gap-2 sm:grid-cols-2 ${tripType === "return" ? "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_9.5rem_9.5rem_13.5rem_auto]" : "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_10rem_13.5rem_auto]"}`}>
@@ -231,10 +269,11 @@ export function SearchForm({
 
         <Field icon="landing" label="To" htmlFor="to">
           <AirportPicker
+            key={destPreset?.n ?? 0}
             id="to"
             inputClassName={bare}
-            placeholder="City or airport, anywhere"
-            initial={{ code: "GAU", city: "Guwahati", name: "Lokpriya Gopinath Bordoloi International Airport", country: "IN", lat: 0, lon: 0 }}
+            placeholder="Delhi, Lahore, Dhaka, Colombo…"
+            initial={destPreset?.airport ?? { code: "GAU", city: "Guwahati", name: "Lokpriya Gopinath Bordoloi International Airport", country: "IN", lat: 0, lon: 0 }}
             onChange={setDest}
           />
         </Field>
