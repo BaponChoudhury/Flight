@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildFollowup, compensairCheckUrl, renderFollowupEmail, type TripFollowup } from "@/lib/followups";
+import { buildFollowup, compensairCheckUrl, compensairFrameSrc, renderFollowupEmail, type TripFollowup } from "@/lib/followups";
 import { sendDueFollowups } from "@/lib/followups-send";
 import { createMemoryStore } from "@/lib/store";
 
@@ -44,13 +44,24 @@ describe("post-trip compensation follow-ups", () => {
     });
   });
 
+  it("fills in the claim page's iframe from known fields only", () => {
+    expect(compensairFrameSrc({})).toBe("https://www.compensair.com/check-flight.html");
+    expect(compensairFrameSrc({ date: "2026-11-23", flightNumber: "IX2945", evil: "x", airline: ["a", "b"] })).toBe(
+      "https://www.compensair.com/check-flight.html#date=2026-11-23&flightNumber=IX2945",
+    );
+  });
+
   it("writes the email with a link per flight and an unsubscribe link", () => {
     const f = buildFollowup(optIn, NOW) as TripFollowup;
-    const m = renderFollowupEmail(f, "https://site/unsubscribe?token=t", (c) => ({ GAU: "Guwahati", MAN: "Manchester" })[c] ?? c);
+    const m = renderFollowupEmail(f, "https://site/unsubscribe?token=t", (c) => ({ GAU: "Guwahati", MAN: "Manchester" })[c] ?? c, "https://site");
     expect(m.subject).toBe("Was your flight to Guwahati on time?");
     expect(m.text).toContain("EY74 · Manchester → AUH");
     expect(m.text).toContain("https://site/unsubscribe?token=t");
     expect(m.html.match(/Check this flight/g)).toHaveLength(3);
+    // Links go to our claim page (Compensair's partner iframe), without the email address.
+    expect(m.text).toContain("https://site/claim?date=2026-11-23&airline=ix&departure=blr&arrival=gau&flightNumber=IX2945");
+    expect(m.text).not.toContain("compensair.com/en/check-flight");
+    expect(m.text).not.toContain("asha%40example.com");
   });
 
   it("sends due emails once, then forgets the address; unsubscribed trips get nothing", async () => {
