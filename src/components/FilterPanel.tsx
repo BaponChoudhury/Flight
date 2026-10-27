@@ -156,7 +156,7 @@ export function FilterPanel({
       )}
 
       <Section title="Leave the UK">{times("departTimes")}</Section>
-      <Section title="Arrive in India">{times("arriveTimes")}</Section>
+      <Section title="Arrival time">{times("arriveTimes")}</Section>
 
       {facets.ukAirports.length > 1 && (
         <Section title="UK airport">

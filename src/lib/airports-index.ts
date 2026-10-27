@@ -117,3 +117,8 @@ export function searchAirports(index: AirportRecord[], q: string, opts: { countr
   }
   return scored.sort((x, y) => x.s - y.s || x.a.city.localeCompare(y.a.city)).slice(0, opts.limit ?? 8).map((x) => x.a);
 }
+
+/** Whether an airport is in India. Codes the index doesn't know (city codes like PAR, NYC) are not. */
+export function isInIndia(index: AirportRecord[], code: string): boolean {
+  return index.find((a) => a.code === code)?.country === "IN";
+}

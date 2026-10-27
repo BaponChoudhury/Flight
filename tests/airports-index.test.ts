@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildIndex, getAirportIndex, parseCsv, searchAirports } from "@/lib/airports-index";
+import { buildIndex, getAirportIndex, isInIndia, parseCsv, searchAirports } from "@/lib/airports-index";
 import { createMemoryStore } from "@/lib/store";
 
 const CSV = `"id","ident","type","name","latitude_deg","longitude_deg","elevation_ft","continent","iso_country","iso_region","municipality","scheduled_service","icao_code","iata_code"
@@ -28,6 +28,8 @@ describe("airport index", () => {
     expect(searchAirports(idx, "bagdogra").map((a) => a.code)).toEqual(["IXB"]);
     expect(searchAirports(idx, "delhi", { country: "IN" }).map((a) => a.code)).toEqual(["DEL"]);
     expect(searchAirports(idx, "london", { country: "IN" })).toEqual([]);
+    expect(searchAirports(idx, "london").map((a) => a.code)).toEqual(["LHR"]);
+    expect([isInIndia(idx, "GAU"), isInIndia(idx, "LHR"), isInIndia(idx, "PAR")]).toEqual([true, false, false]);
   });
 
   it("downloads once, then serves from the store", async () => {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getAirportIndex, isInIndia } from "@/lib/airports-index";
 import { runSearch, validateRequest } from "@/lib/engine/search";
 import { aviasalesConfigured, createAviasalesProvider } from "@/lib/providers/aviasales";
 import { ignavProvider } from "@/lib/providers/ignav";
@@ -21,7 +22,9 @@ export async function POST(request: Request) {
   try {
     // Aviasales needs the searching user's own IP and our site's host on every search.
     const throughProviders = aviasalesConfigured() ? [createAviasalesProvider(clientOf(request))] : [];
-    const result = await runSearch(body, { store: getStore(), provider: ignavProvider, throughProviders });
+    const store = getStore();
+    const destInIndia = await getAirportIndex(store).then((index) => isInIndia(index, body.dest), () => true);
+    const result = await runSearch(body, { store, provider: ignavProvider, throughProviders, destInIndia });
     return NextResponse.json(result);
   } catch (err) {
     console.error("search failed", err);
