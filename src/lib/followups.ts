@@ -69,6 +69,12 @@ export function buildFollowup(
   };
 }
 
+/** Our name on Compensair's partner iframe: claims made through it are credited to us. */
+export const COMPENSAIR_PARTNER = "bilal_choudhury";
+
+/** Fields Compensair's claim form fills in from "#param=…" (their documented links). */
+export const COMPENSAIR_PREFILL = ["date", "airline", "departure", "arrival", "flightNumber", "email", "typeOfDisruption"] as const;
+
 /** Compensair's claim form with this flight filled in (their documented "#param=…" links). */
 export function compensairCheckUrl(f: FollowupFlight, email: string | null): string {
   const params = new URLSearchParams({
@@ -82,15 +88,35 @@ export function compensairCheckUrl(f: FollowupFlight, email: string | null): str
   return `https://www.compensair.com/en/check-flight.html#${params}`;
 }
 
+/**
+ * Our claim page with this flight filled in. It shows Compensair's form in our partner iframe,
+ * so the claim is credited to us (a direct link to Compensair isn't). The email address stays
+ * out of the link so it never lands in our server logs.
+ */
+export function claimPageUrl(site: string, f: FollowupFlight): string {
+  return `${site}/claim?${new URL(compensairCheckUrl(f, null)).hash.slice(1)}`;
+}
+
+/** The iframe address for our claim page, filled in from its query string (known fields only). */
+export function compensairFrameSrc(query: Record<string, string | string[] | undefined>): string {
+  const params = new URLSearchParams();
+  for (const k of COMPENSAIR_PREFILL) {
+    const v = query[k];
+    if (typeof v === "string" && v.length <= 100) params.set(k, v);
+  }
+  const hash = params.toString();
+  return `https://www.compensair.com/check-flight.html${hash ? `#${hash}` : ""}`;
+}
+
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const day = (utc: string) => new Date(utc).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
 
 /** The follow-up email. `cityOf` turns airport codes into names ("GAU" → "Guwahati"). */
-export function renderFollowupEmail(f: TripFollowup, unsubscribeUrl: string, cityOf: (code: string) => string = (c) => c) {
+export function renderFollowupEmail(f: TripFollowup, unsubscribeUrl: string, cityOf: (code: string) => string = (c) => c, site = siteUrl()) {
   const dest = cityOf(f.trip.dest);
   const subject = `Was your flight to ${dest} on time?`;
   const intro = `If any flight on your trip arrived 3+ hours late, was cancelled, or you were denied boarding, you could claim up to £520 under UK and EU rules.`;
-  const rows = f.trip.flights.map((fl) => ({ label: `${fl.carrier}${fl.flightNumber} · ${cityOf(fl.from)} → ${cityOf(fl.to)} · ${day(fl.departUtc)}`, url: compensairCheckUrl(fl, f.email) }));
+  const rows = f.trip.flights.map((fl) => ({ label: `${fl.carrier}${fl.flightNumber} · ${cityOf(fl.from)} → ${cityOf(fl.to)} · ${day(fl.departUtc)}`, url: claimPageUrl(site, fl) }));
   const text = [
     subject,
     "",
