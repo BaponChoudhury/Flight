@@ -97,13 +97,14 @@ export function sign(token: string, body: Record<string, unknown>): string {
 
 // ---------- HTTP ----------
 
-async function asFetch<T>(path: string, init?: { body?: unknown }): Promise<T> {
+// Every request carries the end user's IP in x-user-ip (Travelpayouts' rule; their limit is 100 requests an hour per user IP).
+async function asFetch<T>(path: string, init: { body?: unknown; userIp: string }): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${BASE_URL}${path}`, {
-      method: init?.body ? "POST" : "GET",
-      headers: { "Content-Type": "application/json", "Accept-Encoding": "gzip" },
-      body: init?.body ? JSON.stringify(init.body) : undefined,
+      method: init.body ? "POST" : "GET",
+      headers: { "Content-Type": "application/json", "Accept-Encoding": "gzip", "x-user-ip": init.userIp },
+      body: init.body ? JSON.stringify(init.body) : undefined,
       cache: "no-store",
       signal: AbortSignal.timeout(30_000),
     });
@@ -137,11 +138,12 @@ function trimTerm(t: RawTerm): RawTerm {
 /** Start a search and poll until it's over (or the time budget runs out). */
 async function runAviasalesSearch(body: Record<string, unknown>, now = Date.now): Promise<AviasalesSearch> {
   const started = now();
-  const start = await asFetch<{ search_id?: string; currency_rates?: Record<string, number> }>("/v1/flight_search", { body });
+  const userIp = String(body.user_ip);
+  const start = await asFetch<{ search_id?: string; currency_rates?: Record<string, number> }>("/v1/flight_search", { body, userIp });
   if (!start.search_id || !start.currency_rates?.gbp) throw new ProviderError("Aviasales didn't start the search", null);
   const out: AviasalesSearch = { searchId: start.search_id, rates: start.currency_rates, airports: {}, gates: {}, alliances: {}, proposals: [], complete: false };
   while (now() - started < POLL_BUDGET_MS) {
-    const chunks = await asFetch<Record<string, unknown>[]>(`/v1/flight_search_results?uuid=${encodeURIComponent(out.searchId)}`);
+    const chunks = await asFetch<Record<string, unknown>[]>(`/v1/flight_search_results?uuid=${encodeURIComponent(out.searchId)}`, { userIp });
     for (const ch of chunks) {
       for (const [code, a] of Object.entries((ch.airports ?? {}) as Record<string, { time_zone?: string }>)) out.airports[code] = { tz: a.time_zone ?? null };
       for (const [id, g] of Object.entries((ch.gates_info ?? {}) as Record<string, { label?: string }>)) out.gates[id] = g.label ?? id;
@@ -442,7 +444,7 @@ export function createAviasalesProvider(client: AviasalesClient): FlightProvider
       const path = `/v1/flight_searches/${encodeURIComponent(ref.searchId)}/clicks/${encodeURIComponent(ref.url)}.json?marker=${encodeURIComponent(marker)}`;
       let raw: { url?: string; method?: string };
       try {
-        const res = await ctx.call({ provider: "aviasales", endpoint: "/v1/flight_searches/clicks", body: { ref: providerRef }, label: `booking link ${ref.seller || "Aviasales"}`, ttlMins: 0, fetcher: () => asFetch(path) });
+        const res = await ctx.call({ provider: "aviasales", endpoint: "/v1/flight_searches/clicks", body: { ref: providerRef }, label: `booking link ${ref.seller || "Aviasales"}`, ttlMins: 0, fetcher: () => asFetch(path, { userIp: client.ip }) });
         raw = res.raw as typeof raw;
       } catch (err) {
         if (err instanceof ProviderError && (err.httpStatus === 404 || err.httpStatus === 410))
