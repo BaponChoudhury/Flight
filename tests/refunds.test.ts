@@ -50,3 +50,22 @@ describe("refund calculator", () => {
     expect(sellerOf(null)).toBeNull();
   });
 });
+
+import { compassionateRange, policyFor, POLICIES } from "@/lib/compassionate";
+
+describe("compassionate refunds", () => {
+  it("has a sourced policy for each major airline on these routes", () => {
+    for (const code of ["BA", "VS", "EK", "QR", "EY", "TK", "AI", "UL", "PK", "GF", "SV", "6E"]) expect(policyFor(code)?.sources.length).toBeGreaterThan(0);
+    expect(new Set(POLICIES.map((p) => p.code)).size).toBe(POLICIES.length);
+  });
+
+  it("ranges from what you'd get anyway up to the full price, depending on the airline's rule", () => {
+    expect(compassionateRange(policyFor("EY")!, "family_died", 900, 102, null)).toMatchObject({ outcome: "full", min: 900, max: 900 });
+    expect(compassionateRange(policyFor("BA")!, "family_died", 900, 102, null)).toMatchObject({ outcome: "discretionary", min: 102, max: 900 });
+    expect(compassionateRange(policyFor("GF")!, "family_died", 900, 102, null)).toMatchObject({ outcome: "validity", min: 102, max: 102 });
+    expect(compassionateRange(policyFor("EK")!, "illness", 900, 102, 600)).toMatchObject({ outcome: "none", min: 600, max: 600 });
+    // Virgin waives only its admin fee for illness: a non-refundable fare stays at taxes back.
+    expect(compassionateRange(policyFor("VS")!, "illness", 900, 102, null)).toMatchObject({ outcome: "fees_waived", min: 102, max: 102 });
+    expect(compassionateRange(policyFor("VS")!, "illness", 900, 102, 750)).toMatchObject({ max: 900 });
+  });
+});

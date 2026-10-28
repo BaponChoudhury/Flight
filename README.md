@@ -249,6 +249,15 @@ pay none), agent service fees, and UK261 refunds plus compensation (£520 per pa
 when the airline cancels. Figures and their sources live in `src/lib/refunds.ts`; anything unpublished
 is listed as unknown rather than guessed.
 
+### Bereavement and serious illness
+The calculator's fourth option covers a death (of the passenger or a close family member) or serious or
+terminal illness. `src/lib/compassionate.ts` holds what 18 airlines on UK–South Asia routes publish
+(full refund, fees waived, discretionary, ticket changes only, or nothing), who counts as family, the
+documents and how to ask, each with links to the airline's own pages (checked October 2026). The result
+shows a range: what you get anyway (unused taxes, or the fare's own refund) up to the full price where
+the airline's rule allows it. Each result's Ticket rules box shows that airline's headline rule and
+links to the calculator.
+
 ### Sign-in (email link, no passwords)
 Uses Supabase Auth with the existing `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. One-time setup:
 1. Run `supabase/migrations/0007_members.sql` (records marketing consent).

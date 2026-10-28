@@ -1,6 +1,7 @@
 "use client";
 
 import type { FlightLeg, RouteOption, SearchRequest } from "@/lib/types";
+import { OUTCOME_LABEL, policyFor } from "@/lib/compassionate";
 import { apdBandB, sellerOf, UK261_LONG_HAUL_GBP } from "@/lib/refunds";
 import { card, Icon } from "./ui";
 
@@ -42,6 +43,8 @@ function calcHref(leg: FlightLeg, req: SearchRequest, ukDate: string | null): st
   });
   if (t?.refundFeeGbp != null) q.set("fee", String(Math.round(t.refundFeeGbp)));
   if (ukDate) q.set("date", ukDate);
+  const airline = it.segments[0]?.carrier;
+  if (airline) q.set("airline", airline);
   return `/refund-calculator?${q}`;
 }
 
@@ -99,6 +102,17 @@ export function TicketRules({ o, req, tz }: { o: RouteOption; req: SearchRequest
                       ? `UK rules (refund, up to ${gbp(UK261_LONG_HAUL_GBP)} compensation) apply only on a UK or EU airline; otherwise the airline's own policy.`
                       : "The airline's own policy applies; UK rules don't cover this flight."}
                 </Row>
+                {(() => {
+                  const p = policyFor(it.segments[0]?.carrier);
+                  return (
+                    <Row mark={p && (p.death === "full" || p.death === "fees_waived") ? "yes" : "unknown"} title="Bereavement or serious illness">
+                      {p ? `${p.name}: ${OUTCOME_LABEL[p.death].toLowerCase()} after a death in the family.` : "Many airlines refund or waive fees after a death."}{" "}
+                      <a href={`${calcHref(leg, req, ukDate)}&reason=compassionate`} className="font-semibold text-brand-600 hover:underline dark:text-brand-300">
+                        See the rules and how to ask
+                      </a>
+                    </Row>
+                  );
+                })()}
                 {seller && seller.id !== "airline" && (
                   <Row mark="unknown" title={`Booking agent: ${it.seller}`}>
                     {seller.note}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { OUTCOME_LABEL, POLICIES, compassionateRange, policyFor, type Event } from "@/lib/compassionate";
 import { estimateRefund, SELLERS, SOURCES, type Cabin, type RefundEstimate, type RefundInput, type Scenario, type TicketType } from "@/lib/refunds";
 import { card, Icon, type IconName } from "./ui";
 
@@ -10,7 +11,7 @@ const label = "mb-1 block text-xs font-semibold uppercase tracking-wide text-sla
 
 function Cards<T extends string>({ value, onChange, options, name }: { value: T; onChange: (v: T) => void; options: [T, string, string, IconName][]; name: string }) {
   return (
-    <div role="radiogroup" aria-label={name} className="grid gap-2 sm:grid-cols-3">
+    <div role="radiogroup" aria-label={name} className={`grid gap-2 ${options.length === 4 ? "sm:grid-cols-2 xl:grid-cols-4" : "sm:grid-cols-3"}`}>
       {options.map(([v, title, sub, icon]) => (
         <button
           key={v}
@@ -62,8 +63,83 @@ function letter(i: RefundInput, e: RefundEstimate): string {
     .join("\n");
 }
 
+const EVENT_TEXT: Record<Event, string> = {
+  family_died: "Sadly, a close family member of [PASSENGER NAME] died on [DATE], so they can no longer travel.",
+  passenger_died: "Sadly, [PASSENGER NAME] died on [DATE], so this booking won't be used.",
+  illness: "[PASSENGER NAME] has been diagnosed with a serious [terminal] illness and their doctor has advised against travel.",
+};
+
+function compassionLetter(event: Event, airline: string): string {
+  return [
+    "Subject: Compassionate refund request, booking reference [YOUR REFERENCE]",
+    "",
+    "Hello,",
+    "",
+    `I'm writing about booking [YOUR REFERENCE], flight [FLIGHT NUMBER] on [DATE] with ${airline}.`,
+    "",
+    EVENT_TEXT[event],
+    "",
+    `I attach ${event === "illness" ? "a letter from the doctor" : "a copy of the death certificate"} and proof of our relationship. Please refund the booking in full to the original payment method, or waive the cancellation fees, under your compassionate policy.`,
+    "",
+    "If a full refund isn't possible, please refund all unused taxes, including UK Air Passenger Duty.",
+    "",
+    "Thank you,",
+    "[YOUR NAME]",
+  ].join("\n");
+}
+
+const TONE: Record<string, string> = {
+  full: "bg-emerald-400/20 text-emerald-200",
+  fees_waived: "bg-emerald-400/20 text-emerald-200",
+  discretionary: "bg-amber-400/20 text-amber-200",
+  validity: "bg-white/15 text-white/80",
+  none: "bg-white/15 text-white/80",
+};
+
+function CompassionResult({ c, policy, event, viaAgent, sellerName }: {
+  c: { outcome: keyof typeof OUTCOME_LABEL; text: string; min: number; max: number; taxesBack: number };
+  policy: ReturnType<typeof policyFor>;
+  event: Event;
+  viaAgent: boolean;
+  sellerName: string;
+}) {
+  return (
+    <>
+      <div className="overflow-hidden rounded-2xl bg-brand-950 text-white shadow-xl">
+        <div className="p-5">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent-300">You could get back</p>
+          <p className="tabular mt-1 font-display text-4xl font-medium sm:text-5xl">
+            {c.min === c.max ? gbp(c.max) : <>{gbp(c.min)}<span className="text-white/50"> – </span>{gbp(c.max)}</>}
+          </p>
+          <span className={`mt-2 inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${TONE[c.outcome]}`}>
+            {policy ? OUTCOME_LABEL[c.outcome] : "Not in our list"}
+          </span>
+          <p className="mt-3 text-sm text-white/85">{c.text}</p>
+          {c.min < c.max && <p className="mt-2 text-xs text-white/60">The lower figure is what you get anyway (unused taxes, or your fare&apos;s own refund); the higher is the full price if the airline agrees.</p>}
+        </div>
+      </div>
+      <div className={`${card} space-y-2 p-4 text-sm`}>
+        <h3 className="font-bold">How to ask{policy ? ` ${policy.name}` : ""}</h3>
+        {policy?.family && event === "family_died" && <p><span className="font-semibold">Who counts as family:</span> {policy.family}</p>}
+        <p><span className="font-semibold">Documents:</span> {policy?.documents ?? "Death certificate or doctor's letter, and proof of relationship."}</p>
+        <p><span className="font-semibold">How:</span> {policy?.how ?? "Contact the airline (or the agent you booked with) before the flight."}</p>
+        {viaAgent && <p className="text-slate-600 dark:text-slate-400">You booked through {sellerName.split(" / ")[0]}: send the request through them. Their own service fee may still apply.</p>}
+        <p className="text-slate-600 dark:text-slate-400">Ask before the flight leaves, and check your travel insurance too: many policies cover cancellation for bereavement or serious illness.</p>
+        {policy?.caveat && <p className="text-xs text-amber-700 dark:text-amber-300">{policy.caveat}</p>}
+        {policy && (
+          <ul className="space-y-0.5 pt-1 text-xs">
+            {policy.sources.map((s) => <li key={s.url}><a href={s.url} target="_blank" rel="noopener noreferrer" className="text-brand-600 underline dark:text-brand-300">{s.label}</a></li>)}
+          </ul>
+        )}
+      </div>
+    </>
+  );
+}
+
 export function RefundCalculator({ initial, email }: { initial: Record<string, string | undefined>; email: string }) {
-  const [scenario, setScenario] = useState<Scenario>("i_cancel");
+  const [scenario, setScenario] = useState<Scenario | "compassionate">(initial.reason === "compassionate" ? "compassionate" : "i_cancel");
+  const [airline, setAirline] = useState(policyFor(initial.airline)?.code ?? "");
+  const [event, setEvent] = useState<Event>("family_died");
   const [ticket, setTicket] = useState<TicketType>((["refundable", "non_refundable", "unknown"] as const).find((t) => t === initial.ticket) ?? "non_refundable");
   const [price, setPrice] = useState(initial.price ?? "");
   const [fee, setFee] = useState(initial.fee ?? "");
@@ -80,13 +156,23 @@ export function RefundCalculator({ initial, email }: { initial: Record<string, s
   const [copied, setCopied] = useState(false);
 
   const input: RefundInput = {
-    scenario, ticket, pricePaidGbp: num(price) ?? 0, refundFeeGbp: num(fee), otherTaxesGbp: num(taxes),
+    scenario: scenario === "compassionate" ? "i_cancel" : scenario, ticket, pricePaidGbp: num(price) ?? 0, refundFeeGbp: num(fee), otherTaxesGbp: num(taxes),
     adults, children, infants, cabin, ukDepartureDate: leavesUk ? date || new Date().toISOString().slice(0, 10) : null,
     sellerId: seller, noticeDays: num(notice), ukRulesApply: ukRules,
   };
   const e = useMemo(() => estimateRefund(input), [JSON.stringify(input)]); // eslint-disable-line react-hooks/exhaustive-deps
-  const needPrice = scenario === "airline_cancelled" || ticket === "refundable";
-  const text = letter(input, e);
+  const needPrice = scenario === "airline_cancelled" || scenario === "compassionate" || ticket === "refundable";
+  const policy = policyFor(airline);
+  const compassion = useMemo(() => {
+    if (scenario !== "compassionate") return null;
+    const taxesBack = estimateRefund({ ...input, ticket: "non_refundable" }).total;
+    const refundable = ticket === "refundable" ? estimateRefund({ ...input, ticket: "refundable" }).total : null;
+    const range = policy
+      ? compassionateRange(policy, event, input.pricePaidGbp, taxesBack, refundable)
+      : { outcome: "discretionary" as const, text: "This airline isn't in our list yet. Many airlines refund, or waive fees, after a death when you send a certificate: ask them.", min: Math.max(taxesBack, refundable ?? 0), max: input.pricePaidGbp };
+    return { ...range, taxesBack };
+  }, [scenario, JSON.stringify(input), policy, event, ticket]); // eslint-disable-line react-hooks/exhaustive-deps
+  const text = compassion ? compassionLetter(event, policy?.name ?? "your airline") : letter(input, e);
 
   const stepper = (lbl: string, v: number, set: (n: number) => void, min = 0) => (
     <div>
@@ -112,6 +198,7 @@ export function RefundCalculator({ initial, email }: { initial: Record<string, s
               ["i_cancel", "I'm cancelling", "I don't want to fly", "x"],
               ["missed", "I missed it", "The flight left without me", "clock"],
               ["airline_cancelled", "Airline cancelled", "Or moved it a lot", "alert"],
+              ["compassionate", "Bereavement or illness", "A death, or serious illness", "shield"],
             ]}
           />
         </div>
@@ -129,6 +216,26 @@ export function RefundCalculator({ initial, email }: { initial: Record<string, s
                 ["unknown", "Not sure", "We'll show the minimum", "info"],
               ]}
             />
+          </div>
+        )}
+
+        {scenario === "compassionate" && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className={label}>Airline</span>
+              <select aria-label="Airline" className={field} value={airline} onChange={(ev) => setAirline(ev.target.value)}>
+                <option value="">Another airline</option>
+                {[...POLICIES].sort((a, b) => a.name.localeCompare(b.name)).map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}
+              </select>
+            </label>
+            <label className="block">
+              <span className={label}>What happened</span>
+              <select aria-label="Reason" className={field} value={event} onChange={(ev) => setEvent(ev.target.value as Event)}>
+                <option value="family_died">A close family member died</option>
+                <option value="passenger_died">The passenger died</option>
+                <option value="illness">Serious or terminal illness</option>
+              </select>
+            </label>
           </div>
         )}
 
@@ -195,6 +302,10 @@ export function RefundCalculator({ initial, email }: { initial: Record<string, s
       </div>
 
       <aside className="space-y-4 lg:sticky lg:top-4">
+        {compassion ? (
+          <CompassionResult c={compassion} policy={policy} event={event} viaAgent={seller !== "airline"} sellerName={SELLERS.find((x) => x.id === seller)?.name ?? ""} />
+        ) : (
+        <>
         <div className="overflow-hidden rounded-2xl bg-brand-950 text-white shadow-xl">
           <div className="p-5">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent-300">You could get back</p>
@@ -236,6 +347,8 @@ export function RefundCalculator({ initial, email }: { initial: Record<string, s
             </a>
           )}
         </div>
+        </>
+        )}
 
         <div className={`${card} p-4 text-sm`}>
           <div className="flex items-center justify-between gap-2">
