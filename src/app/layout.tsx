@@ -29,11 +29,15 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               <span className="whitespace-nowrap text-lg font-bold tracking-tight">Flights to India</span>
             </Link>
             <div className="flex items-center gap-1">
+              <Link href="/refund-calculator" className="rounded-lg px-3 py-1.5 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white">
+                <span className="sm:hidden">Refunds</span>
+                <span className="hidden sm:inline">Refund calculator</span>
+              </Link>
               <Link href="/claim" className="rounded-lg px-3 py-1.5 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white">
                 <span className="sm:hidden">Claim</span>
                 <span className="hidden sm:inline">Claim compensation</span>
               </Link>
-              <Link href="/admin" className="rounded-lg px-3 py-1.5 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white">
+              <Link href="/admin" className="hidden rounded-lg px-3 py-1.5 sm:inline text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white">
                 Admin
               </Link>
             </div>

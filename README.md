@@ -236,6 +236,40 @@ Things to know:
 - **Market.** v1 has no market setting. In tests from a US server, results were US-market (sellers like BudgetAir.us). Real UK visitors should get UK results, but check this once deployed.
 - **Prices** come in roubles with Aviasales' own exchange rates and are converted to GBP; only 1–2% of fares are priced in GBP by the seller.
 
+## Ticket rules and the refund calculator
+
+Every result's details show **Ticket rules** for each ticket: refund before departure (and the fee),
+date changes, what comes back if you cancel or miss the flight, what you're owed if the airline
+cancels, and the booking agent's own fees. Rules come from Aviasales fares; Ignav fares say "not stated".
+
+The **refund calculator** (`/refund-calculator`) is for signed-in members. It works out refunds on
+refundable tickets, unused taxes on non-refundable ones (UK Air Passenger Duty, Band B: £102 economy /
+£244 other cabins from 1 April 2026, £105.33 / £251.95 from 1 April 2027; children under 16 in economy
+pay none), agent service fees, and UK261 refunds plus compensation (£520 per passenger on these routes)
+when the airline cancels. Figures and their sources live in `src/lib/refunds.ts`; anything unpublished
+is listed as unknown rather than guessed.
+
+### Bereavement and serious illness
+The calculator's fourth option covers a death (of the passenger or a close family member) or serious or
+terminal illness. `src/lib/compassionate.ts` holds what 18 airlines on UK–South Asia routes publish
+(full refund, fees waived, discretionary, ticket changes only, or nothing), who counts as family, the
+documents and how to ask, each with links to the airline's own pages (checked October 2026). The result
+shows a range: what you get anyway (unused taxes, or the fare's own refund) up to the full price where
+the airline's rule allows it. Each result's Ticket rules box shows that airline's headline rule and
+links to the calculator.
+
+### Sign-in (email link, no passwords)
+Uses Supabase Auth with the existing `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. One-time setup:
+1. Run `supabase/migrations/0007_members.sql` (records marketing consent).
+2. In Supabase → Authentication → URL Configuration, set the Site URL to your site and add
+   `https://<your-site>/auth/callback` to Redirect URLs.
+3. Supabase's built-in email sender only allows a few emails an hour. Before launch, set a custom SMTP
+   sender (e.g. Resend) under Authentication → Emails.
+4. Optional: `SESSION_SECRET` (any long random string) signs the session cookie; without it a key is
+   derived from the service role key.
+
+Admin → Members lists sign-ups and downloads a CSV of those who ticked the optional marketing box.
+
 ## Known limitations / later
 
 **Origins outside the UK.** The **Any airport** tab lets users fly from anywhere. Still UK-specific:
