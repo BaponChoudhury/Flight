@@ -81,6 +81,15 @@ export interface FareRequest {
   notes: string | null;
 }
 
+export interface Member {
+  user_id: string;
+  email: string;
+  marketing_opt_in: boolean;
+  marketing_consent_at: string | null;
+  created_at: string;
+  last_login_at: string;
+}
+
 export interface Store {
   kind: "supabase" | "memory";
   loadConfig(): Promise<AppConfig>;
@@ -105,6 +114,9 @@ export interface Store {
   /** Unsubscribes by the link's token and wipes the email address; false if the token is unknown. */
   unsubscribeFollowup(token: string): Promise<boolean>;
   listFollowups(limit?: number): Promise<TripFollowup[]>;
+  /** Records a sign-in. Marketing consent only ever switches on here, never off (unsubscribe does that). */
+  upsertMember(m: { user_id: string; email: string; marketing_opt_in: boolean }): Promise<void>;
+  listMembers(limit?: number): Promise<Member[]>;
   listBookingClicks(limit?: number): Promise<BookingClick[]>;
   putCache(row: CacheRow): Promise<void>;
   logSearch(search: SearchLog, calls: CallLogEntry[]): Promise<void>;
@@ -139,6 +151,7 @@ class MemoryStore implements Store {
   private requests: FareRequest[] = [];
   private clicks: BookingClick[] = [];
   private followups: TripFollowup[] = [];
+  private members: Member[] = [];
 
   async saveQuote(q: FareQuote) {
     this.quotes.set(q.id, structuredClone(q));
@@ -177,6 +190,15 @@ class MemoryStore implements Store {
   }
   async listFollowups(limit = 200) {
     return structuredClone([...this.followups].reverse().slice(0, limit));
+  }
+  async upsertMember(m: { user_id: string; email: string; marketing_opt_in: boolean }) {
+    const now = new Date().toISOString();
+    const prev = this.members.find((x) => x.user_id === m.user_id);
+    if (prev) Object.assign(prev, { email: m.email, last_login_at: now }, m.marketing_opt_in && !prev.marketing_opt_in ? { marketing_opt_in: true, marketing_consent_at: now } : {});
+    else this.members.push({ ...m, marketing_consent_at: m.marketing_opt_in ? now : null, created_at: now, last_login_at: now });
+  }
+  async listMembers(limit = 500) {
+    return structuredClone([...this.members].reverse().slice(0, limit));
   }
   async listBookingClicks(limit = 200) {
     return structuredClone([...this.clicks].reverse().slice(0, limit));
@@ -352,6 +374,22 @@ class SupabaseStore implements Store {
       .select("id");
     if (error) throw new Error(`trip_followups update failed: ${error.message}`);
     return (data ?? []).length > 0;
+  }
+
+  async upsertMember(m: { user_id: string; email: string; marketing_opt_in: boolean }) {
+    const now = new Date().toISOString();
+    const { data: prev, error: readError } = await this.db.from("members").select("marketing_opt_in").eq("user_id", m.user_id).maybeSingle();
+    if (readError) throw new Error(`members read failed (run supabase/migrations/0007_members.sql?): ${readError.message}`);
+    const row: Partial<Member> = { user_id: m.user_id, email: m.email, last_login_at: now };
+    if (m.marketing_opt_in && !prev?.marketing_opt_in) Object.assign(row, { marketing_opt_in: true, marketing_consent_at: now });
+    const { error } = await this.db.from("members").upsert(row, { onConflict: "user_id" });
+    if (error) throw new Error(`members upsert failed: ${error.message}`);
+  }
+
+  async listMembers(limit = 500) {
+    const { data, error } = await this.db.from("members").select("*").order("created_at", { ascending: false }).limit(limit);
+    if (error) throw new Error(`members read failed (run supabase/migrations/0007_members.sql?): ${error.message}`);
+    return (data ?? []) as Member[];
   }
 
   async listFollowups(limit = 200) {

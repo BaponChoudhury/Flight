@@ -6,6 +6,7 @@ import { formatDuration, formatLocalDay, formatLocalTime, localDate } from "@/li
 import type { Badge, BookingLink, FareTerms, FlightLeg, NormalisedSegment, ProviderId, RouteOption, SearchRequest, SearchResponse, Settings } from "@/lib/types";
 import { activeCount, applyFilters, facetsOf, NO_FILTERS, type Filters } from "@/lib/filters";
 import { AirportCompare } from "./AirportCompare";
+import { TicketRules } from "./TicketRules";
 import { FilterPanel } from "./FilterPanel";
 import { FollowupOptIn, type OptedIn } from "./FollowupOptIn";
 import { EMPTY_DRAFT, GroundPanel, toInput, type GroundDraft } from "./GroundPanel";
@@ -554,6 +555,7 @@ function ResultCard({ o, tz, req, labels, groundAlts, searchId }: { o: RouteOpti
               </table>
               <p className="mt-2 text-xs text-slate-500">Price as of {formatLocalTime(o.priceAsOf, UK_TZ)} UK time. Fares change — check before booking.</p>
             </div>
+            <TicketRules o={o} req={req} tz={tz} />
             {(!prompted || optedIn) && optIn(false)}
             </div>
           </div>

@@ -273,6 +273,78 @@ interface FollowupRow {
   unsubscribed_at: string | null;
 }
 
+interface MemberRow {
+  user_id: string;
+  email: string;
+  marketing_opt_in: boolean;
+  marketing_consent_at: string | null;
+  created_at: string;
+  last_login_at: string;
+}
+
+function Members() {
+  const [rows, setRows] = useState<MemberRow[] | null>(null);
+  const [error, setError] = useState("");
+  async function load() {
+    setError("");
+    const res = await fetch("/api/members", { headers: adminHeaders() });
+    const d = await res.json();
+    if (!res.ok) return setError(d.error ?? "Failed");
+    setRows(d.members);
+  }
+  useEffect(() => {
+    load();
+  }, []);
+  const optedIn = (rows ?? []).filter((r) => r.marketing_opt_in);
+  function downloadCsv() {
+    const csv = ["email,consented_at", ...optedIn.map((r) => `${r.email},${r.marketing_consent_at ?? ""}`)].join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    a.download = "marketing-opt-ins.csv";
+    a.click();
+  }
+  return (
+    <details className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+      <summary className="cursor-pointer font-semibold">Members {rows ? `(${rows.length}, ${optedIn.length} agreed to marketing)` : ""}</summary>
+      <p className="my-2 text-sm text-slate-600 dark:text-slate-400">
+        People who signed in to use the refund calculator. Only email those who agreed to marketing, and include an unsubscribe link.
+      </p>
+      <div className="mb-2 flex items-center gap-2">
+        <button type="button" className="rounded border border-slate-300 px-3 py-1 text-sm dark:border-slate-600" onClick={load}>Refresh</button>
+        <button type="button" className="rounded bg-brand-600 px-3 py-1 text-sm font-semibold text-white disabled:opacity-50" disabled={!optedIn.length} onClick={downloadCsv}>
+          Download marketing opt-ins (CSV)
+        </button>
+      </div>
+      {error && <p className="text-sm text-rose-700">{error}</p>}
+      {rows && rows.length === 0 && <p className="text-sm">No members yet.</p>}
+      {rows && rows.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs text-slate-500">
+              <tr>
+                <th className="py-1 pr-3">Email</th>
+                <th className="py-1 pr-3">Joined</th>
+                <th className="py-1 pr-3">Last sign-in</th>
+                <th className="py-1 pr-3">Marketing</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.user_id} className="border-t border-slate-100 dark:border-slate-800">
+                  <td className="py-1 pr-3">{r.email}</td>
+                  <td className="py-1 pr-3 whitespace-nowrap">{new Date(r.created_at).toLocaleDateString("en-GB")}</td>
+                  <td className="py-1 pr-3 whitespace-nowrap">{new Date(r.last_login_at).toLocaleDateString("en-GB")}</td>
+                  <td className="py-1 pr-3">{r.marketing_opt_in ? `yes (${new Date(r.marketing_consent_at ?? r.created_at).toLocaleDateString("en-GB")})` : "no"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </details>
+  );
+}
+
 function Followups() {
   const [data, setData] = useState<{ emailConfigured: boolean; followups: FollowupRow[] } | null>(null);
   const [error, setError] = useState("");
@@ -479,6 +551,7 @@ export function AdminEditor() {
       <BookingClicks key={`clicks-${keyVersion}`} />
       <CompensairClaims key={`claims-${keyVersion}`} />
       <Followups key={`followups-${keyVersion}`} />
+      <Members key={`members-${keyVersion}`} />
       {TABLES.map((t) => <TableEditor key={t.table} spec={t} initial={data.config[t.key] as unknown as Row[]} />)}
       <SettingsEditor initial={data.config.settings} />
     </div>
