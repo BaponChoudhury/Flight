@@ -270,8 +270,10 @@ describe("SubIDs on Aviasales booking links", () => {
   it("asks Aviasales for the booking link with the partner ID and SubID", async () => {
     vi.stubEnv("TRAVELPAYOUTS_MARKER", "123456");
     const urls: string[] = [];
-    vi.stubGlobal("fetch", async (url: string) => {
+    const userIps: (string | undefined)[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
       urls.push(url);
+      userIps.push((init?.headers as Record<string, string> | undefined)?.["x-user-ip"]);
       return new Response(JSON.stringify({ url: "https://seller.example/book", method: "GET" }));
     });
     const provider = createAviasalesProvider({ ip: "1.2.3.4", host: "example.com" });
@@ -279,5 +281,6 @@ describe("SubIDs on Aviasales booking links", () => {
     const links = await provider.getBookingLinks("as1|sid-1|101|CheapTrips", { adults: 1, children: 0, allowSelfTransfer: false }, ctx as never, undefined, "cabc123");
     expect(links[0].url).toBe("https://seller.example/book");
     expect(new URL(urls[0]).searchParams.get("marker")).toBe("123456.cabc123");
+    expect(userIps).toEqual(["1.2.3.4"]); // the end user's IP, as Travelpayouts requires
   });
 });
