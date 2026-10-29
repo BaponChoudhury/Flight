@@ -13,8 +13,8 @@ const DATA: [string, string, string, string][] = [
   ],
   [
     "Your IP address when you search",
-    "Your IP address, passed with the search to Aviasales (Travelpayouts), as their service requires.",
-    "So Aviasales can return prices and apply its fair-use limits. We don't store it in our search records.",
+    "Your IP address, passed with the search to one of our flight price partners, as their service requires.",
+    "So the partner can return prices and apply its fair-use limits. We don't store it in our search records.",
     "Legitimate interests",
   ],
   [
@@ -50,12 +50,11 @@ const DATA: [string, string, string, string][] = [
 ];
 
 const PROCESSORS: [string, string, string][] = [
-  ["Vercel", "Website hosting (servers may be in the US).", "Pages, searches and short-lived server logs, which include IP addresses."],
-  ["Supabase", "Database and email sign-in.", "Search records, booking clicks, follow-ups, accounts and marketing choices."],
-  ["Resend", "Sending emails (US).", "Email addresses and email content."],
-  ["Ignav", "Flight prices.", "Search details only (airports, dates, passengers). No personal details."],
-  ["Aviasales / Travelpayouts", "Flight prices and booking links.", "Search details and your IP address."],
-  ["postcodes.io", "Finding your nearest airports.", "The town or postcode you type."],
+  ["Website hosting", "Running the website (servers may be in the US).", "Pages, searches and short-lived server logs, which include IP addresses."],
+  ["Database and sign-in", "Storing data and sending sign-in emails.", "Search records, booking clicks, follow-ups, accounts and marketing choices."],
+  ["Email delivery", "Sending the emails you ask for (may be in the US).", "Email addresses and email content."],
+  ["Flight price and booking partners", "Finding flight prices and booking links.", "Search details; one partner also receives your IP address."],
+  ["Postcode lookup", "Finding your nearest airports.", "The town or postcode you type."],
 ];
 
 export default function PrivacyPage() {
@@ -90,11 +89,11 @@ export default function PrivacyPage() {
       </p>
 
       <h2>Who we share data with</h2>
-      <p>We use these service providers. They process data only to provide their service to us.</p>
+      <p>We use these types of service provider. They process data only to provide their service to us. You can ask us for their names.</p>
       <div className="overflow-x-auto">
         <table>
           <thead>
-            <tr><th>Provider</th><th>What for</th><th>What they receive</th></tr>
+            <tr><th>Type of provider</th><th>What for</th><th>What they receive</th></tr>
           </thead>
           <tbody>
             {PROCESSORS.map(([name, role, data]) => (

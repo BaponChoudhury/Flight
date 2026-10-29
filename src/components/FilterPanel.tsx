@@ -92,7 +92,7 @@ export function FilterPanel({
         <Check checked={filters.refundableOnly} onChange={(on) => set({ refundableOnly: on })}>
           Refundable tickets only
         </Check>
-        <p className="text-xs text-slate-500 dark:text-slate-400">Money back if you cancel before departure (a fee may apply). Refund rules come from Aviasales only.</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Money back if you cancel before departure (a fee may apply). Refund rules aren&apos;t available for every fare.</p>
       </Section>
 
       {facets.hasOne && facets.hasSeparate && (

@@ -244,7 +244,7 @@ describe("runSearch with Aviasales alongside Ignav", () => {
     const ignav = makeIgnav();
     const res = await runSearch({ ...req, refundableOnly: true }, { store: createMemoryStore(), provider: ignav.p });
     expect(ignav.calls).toEqual([]);
-    expect(res.errors.join(" ")).toMatch(/Aviasales isn't set up/);
+    expect(res.errors.join(" ")).toMatch(/isn't available right now/);
   });
 });
 

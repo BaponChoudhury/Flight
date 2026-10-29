@@ -168,7 +168,7 @@ export function SearchApp() {
       <div className={`relative mx-auto max-w-6xl px-4 ${compact ? "-mt-20" : "-mt-24"}`}>
         {!hasApiKey && (
           <p role="alert" className="mb-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-100">
-            IGNAV_API_KEY isn&apos;t set on the server, so searches will fail. See the README.
+            Flight search isn&apos;t set up on the server yet, so searches will fail.
           </p>
         )}
         {/* The form stays mounted (keeps what was typed) and is hidden behind the summary once results are in. */}
