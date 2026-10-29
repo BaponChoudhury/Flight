@@ -1,3 +1,4 @@
+import { CompensairFrame } from "@/components/CompensairFrame";
 import { COMPENSAIR_PARTNER, compensairFrameSrc } from "@/lib/followups";
 
 export const metadata = { title: "Claim flight compensation · Flights to India" };
@@ -28,7 +29,7 @@ export default async function ClaimPage({ searchParams }: { searchParams: Promis
       </div>
       <div className="relative -mt-20 mx-auto grid max-w-5xl gap-5 px-4 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
         <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/80 dark:ring-slate-800">
-          <iframe src={src} name={COMPENSAIR_PARTNER} title="Compensair claim form" className="block h-[775px] w-full border-0" />
+          <CompensairFrame src={src} name={COMPENSAIR_PARTNER} />
         </div>
         <aside className="rounded-2xl bg-white p-5 text-sm shadow-sm ring-1 ring-slate-200/80 dark:bg-slate-900 dark:ring-slate-800">
           <h2 className="font-bold">Which flights qualify?</h2>

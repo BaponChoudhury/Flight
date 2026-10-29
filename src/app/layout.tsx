@@ -44,8 +44,14 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           </nav>
         </header>
         <main className="pb-16">{children}</main>
-        <footer className="border-t border-slate-200 py-6 text-center text-xs text-slate-500 dark:border-slate-800">
-          Prices come from airline and travel-agent sites and can change. Always check the final price before you book.
+        <footer className="border-t border-slate-200 px-4 py-6 text-center text-xs text-slate-500 dark:border-slate-800">
+          <nav aria-label="Legal" className="mb-2 flex flex-wrap justify-center gap-x-4 gap-y-1">
+            <Link href="/terms" className="hover:underline">Terms</Link>
+            <Link href="/privacy" className="hover:underline">Privacy</Link>
+            <Link href="/cookies" className="hover:underline">Cookies</Link>
+          </nav>
+          <p>Prices come from airline and travel-agent sites and can change. Always check the final price before you book.</p>
+          <p className="mt-1">We may earn a commission when you book through our links. It doesn&apos;t change your price.</p>
         </footer>
       </body>
     </html>

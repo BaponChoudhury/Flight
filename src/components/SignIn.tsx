@@ -70,7 +70,10 @@ export function SignIn({ next, title, intro }: { next: string; title: string; in
           >
             {state === "sending" ? "Sending…" : "Email me a sign-in link"}
           </button>
-          <p className="text-xs text-slate-500">No password needed. We use your email to sign you in{marketing ? " and for the emails you asked for" : ""}, nothing else.</p>
+          <p className="text-xs text-slate-500">
+            No password needed. We use your email to sign you in{marketing ? " and for the emails you asked for" : ""}, nothing else. By signing in you confirm
+            you&apos;re 18 or over and agree to our <a href="/terms" className="underline">terms</a>; see our <a href="/privacy" className="underline">privacy notice</a>.
+          </p>
         </form>
       )}
     </div>
