@@ -531,12 +531,51 @@ function SettingsEditor({ initial }: { initial: AppConfig["settings"] }) {
   );
 }
 
+/** Nothing on the admin page shows until the server accepts the admin password. */
+function AdminLogin({ onUnlock }: { onUnlock: () => void }) {
+  const [value, setValue] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    const res = await fetch("/api/admin/check", { headers: { "x-admin-key": value } });
+    setBusy(false);
+    if (res.status === 401) return setError("Wrong password.");
+    if (!res.ok) return setError((await res.json().catch(() => ({}))).error ?? "Couldn't check the password.");
+    try {
+      sessionStorage.setItem(ADMIN_KEY, value);
+    } catch {
+      /* storage unavailable */
+    }
+    onUnlock();
+  }
+  return (
+    <form onSubmit={submit} className="mx-auto mt-16 max-w-sm space-y-3 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+      <h1 className="text-lg font-bold">Admin</h1>
+      <input type="password" autoFocus placeholder="Admin password" aria-label="Admin password" className={`${input} py-2`} value={value} onChange={(e) => setValue(e.target.value)} />
+      {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
+      <button type="submit" disabled={busy || !value} className="w-full rounded bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+        {busy ? "Checking…" : "Sign in"}
+      </button>
+    </form>
+  );
+}
+
 export function AdminEditor() {
+  const [unlocked, setUnlocked] = useState<boolean | null>(null);
   const [data, setData] = useState<{ config: AppConfig; storage: string; hasApiKey: boolean; hasCompensair?: boolean } | null>(null);
   const [keyVersion, setKeyVersion] = useState(0);
+  // A password saved earlier in this browser tab is re-checked before anything shows.
   useEffect(() => {
-    fetch("/api/config").then((r) => r.json()).then(setData);
+    if (!adminKey()) return setUnlocked(false);
+    fetch("/api/admin/check", { headers: adminHeaders() }).then((r) => setUnlocked(r.ok));
   }, []);
+  useEffect(() => {
+    if (unlocked) fetch("/api/config").then((r) => r.json()).then(setData);
+  }, [unlocked]);
+  if (unlocked === false) return <AdminLogin onUnlock={() => setUnlocked(true)} />;
   if (!data) return <p>Loading…</p>;
   return (
     <div className="space-y-3">
@@ -546,7 +585,24 @@ export function AdminEditor() {
         {data.storage === "memory" && " — changes are lost when the server restarts. Connect Supabase to keep them."} · Ignav key:{" "}
         <strong>{data.hasApiKey ? "set" : "missing"}</strong> · Compensair token: <strong>{data.hasCompensair ? "set" : "missing"}</strong>
       </p>
-      <AdminKeyBox onSet={() => setKeyVersion((v) => v + 1)} />
+      <div className="flex items-center gap-2">
+        <AdminKeyBox onSet={() => setKeyVersion((v) => v + 1)} />
+        <button
+          type="button"
+          className="rounded border border-slate-300 px-3 py-1 text-sm dark:border-slate-600"
+          onClick={() => {
+            try {
+              sessionStorage.removeItem(ADMIN_KEY);
+            } catch {
+              /* storage unavailable */
+            }
+            setUnlocked(false);
+            setData(null);
+          }}
+        >
+          Sign out
+        </button>
+      </div>
       <FareRequests key={keyVersion} />
       <BookingClicks key={`clicks-${keyVersion}`} />
       <CompensairClaims key={`claims-${keyVersion}`} />
