@@ -71,7 +71,7 @@ export function FollowupOptIn({
         <form onSubmit={submit} className="mt-1 space-y-2">
           <p className="text-emerald-900/90 dark:text-emerald-100/90">
             If any of these flights is delayed by 3+ hours, cancelled, or you&apos;re denied boarding, you may be owed up to £520. We&apos;ll email you after
-            your trip with a quick link to claim. Free, no obligation, unsubscribe anytime.
+            your trip with a quick link to claim. Free, no obligation, unsubscribe anytime (<a href="/privacy" className="underline">privacy notice</a>).
           </p>
           <label className="flex items-start gap-2">
             <input type="checkbox" className="mt-0.5 h-4 w-4" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
