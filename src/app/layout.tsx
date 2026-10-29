@@ -37,9 +37,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                 <span className="sm:hidden">Claim</span>
                 <span className="hidden sm:inline">Claim compensation</span>
               </Link>
-              <Link href="/admin" className="hidden rounded-lg px-3 py-1.5 sm:inline text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white">
-                Admin
-              </Link>
             </div>
           </nav>
         </header>
