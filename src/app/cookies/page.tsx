@@ -37,7 +37,7 @@ export default function CookiesPage() {
           cookies. We only load it after you click to show it.
         </li>
         <li>
-          <strong>Airlines and travel agents:</strong> when you click through to book, the seller&apos;s website (and Aviasales, which tracks the referral)
+          <strong>Airlines and travel agents:</strong> when you click through to book, the seller&apos;s website (and the booking partner that tracks the referral)
           sets its own cookies under its own policy.
         </li>
       </ul>

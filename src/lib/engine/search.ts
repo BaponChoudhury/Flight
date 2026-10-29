@@ -292,8 +292,8 @@ export async function runSearch(req: SearchRequest, deps: Deps): Promise<SearchR
   const skippedHubs = viaIndia ? allHubs.filter((h) => !hubs.includes(h) && h !== req.dest) : [];
   if (refundableOnly) {
     if (extraProviders.length)
-      notes.push("Refundable tickets only: these fares come from Aviasales, the only source with refund rules. Split tickets built from separate searches aren't included.");
-    else errors.push("Refundable-only search isn't available: Aviasales isn't set up on this server.");
+      notes.push("Refundable tickets only: only fares with published refund rules are shown. Split tickets built from separate searches aren't included.");
+    else errors.push("Refundable-only search isn't available right now.");
   } else if (skippedHubs.length) notes.push(`Not searching ${skippedHubs.join(", ")}: no flights to ${req.dest} last time we checked.`);
 
   const safe = async (p: Promise<NormalisedItinerary[]>, what: string) => {

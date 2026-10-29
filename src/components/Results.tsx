@@ -48,8 +48,8 @@ function fareTermsText(t: FareTerms): string | null {
   return parts.length ? parts.join(" · ") : null;
 }
 
-// TESTING ONLY: shows which fare source (Ignav / Aviasales) each result came from.
-// Set to false before real users see the site.
+// TESTING ONLY: shows which fare source (Ignav / Aviasales) each result came from, plus error and
+// call details that name our sources. Set to false before real users see the site.
 const SHOW_SOURCE_TAGS = true;
 const SOURCE_NAME: Record<ProviderId, string> = { ignav: "Ignav", aviasales: "Aviasales", duffel: "Duffel" };
 
@@ -693,7 +693,8 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
           <Icon name="info" className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <p className="font-semibold">Some searches didn&apos;t complete, so a few routes may be missing.</p>
-            <ul className="mt-0.5 list-disc pl-5 text-amber-900/80 dark:text-amber-100/80">{data.errors.map((e) => <li key={e}>{e}</li>)}</ul>
+            {/* Error details name our flight sources: shown only while testing. */}
+            {SHOW_SOURCE_TAGS && <ul className="mt-0.5 list-disc pl-5 text-amber-900/80 dark:text-amber-100/80">{data.errors.map((e) => <li key={e}>{e}</li>)}</ul>}
           </div>
         </div>
       )}
@@ -739,7 +740,7 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
                 </p>
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
                   {refundableOnly && !options.length
-                    ? "Refund rules come from Aviasales only, and split tickets with an Ignav flight can't be checked."
+                    ? "Refund rules aren't available for every fare, and split tickets can't always be checked."
                     : "Try removing a filter or two."}
                 </p>
                 <button type="button" className="mt-3 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700" onClick={() => setFilters(NO_FILTERS)}>
@@ -806,12 +807,12 @@ export function Results({ data, req, settings }: { data: SearchResponse; req: Se
               <summary className="cursor-pointer select-none">Search details</summary>
               <div className="mt-2 space-y-1">
                 <p>
-                  {data.options.length} options · {s.paidByProvider?.ignav ?? s.paidCalls} Ignav calls used
-                  {s.paidByProvider?.aviasales != null && ` · ${s.paidByProvider.aviasales} Aviasales searches`} · {s.cacheHits} from cache
-                  {s.failedCalls > 0 && ` · ${s.failedCalls} failed`} · {(s.durationMs / 1000).toFixed(1)}s
+                  {data.options.length} options
+                  {SHOW_SOURCE_TAGS && ` · ${s.paidByProvider?.ignav ?? s.paidCalls} Ignav calls used${s.paidByProvider?.aviasales != null ? ` · ${s.paidByProvider.aviasales} Aviasales searches` : ""} · ${s.cacheHits} from cache${s.failedCalls > 0 ? ` · ${s.failedCalls} failed` : ""}`}{" "}
+                  · {(s.durationMs / 1000).toFixed(1)}s
                 </p>
                 {asOf && <p>Prices as of {formatLocalTime(asOf, UK_TZ)} UK time (cached up to {settings.cache_ttl_mins / 60}h).</p>}
-                {data.storage === "memory" && <p className="text-amber-700">Supabase not connected: cache resets when the server restarts.</p>}
+                {SHOW_SOURCE_TAGS && data.storage === "memory" && <p className="text-amber-700">Supabase not connected: cache resets when the server restarts.</p>}
                 {data.notes.length > 0 && <ul className="list-disc pl-5">{data.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
               </div>
             </details>

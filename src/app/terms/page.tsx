@@ -40,7 +40,7 @@ export default function TermsPage() {
 
       <h2>5. How we make money</h2>
       <p>
-        Searching is free. We may earn a commission when you book through some of our links (for example Aviasales and its partner agents), or when you
+        Searching is free. We may earn a commission when you book through some of our links to flight partners and travel agents, or when you
         make a claim through our partner Compensair. This never changes the price you pay. Where the same flight costs about the same from two sources, we
         may show the one that earns us commission.
       </p>
