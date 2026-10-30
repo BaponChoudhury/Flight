@@ -22,6 +22,14 @@ export async function userFromToken(accessToken: string): Promise<{ id: string; 
   return { id: data.user.id, email: data.user.email };
 }
 
+/** Checks a ?token_hash link (customised email templates) and returns its user. */
+export async function userFromTokenHash(tokenHash: string, type: string): Promise<{ id: string; email: string } | null> {
+  const otpType = (["magiclink", "signup", "email", "invite"].includes(type) ? type : "email") as "magiclink" | "signup" | "email" | "invite";
+  const { data, error } = await client().auth.verifyOtp({ token_hash: tokenHash, type: otpType });
+  if (error || !data.user?.email) return null;
+  return { id: data.user.id, email: data.user.email };
+}
+
 /** Only same-site paths, so the link can't bounce people to another site. */
 export function safeNext(next: unknown): string {
   return typeof next === "string" && next.startsWith("/") && !next.startsWith("//") ? next.slice(0, 500) : "/refund-calculator";

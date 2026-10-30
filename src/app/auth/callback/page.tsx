@@ -15,13 +15,17 @@ export default function AuthCallback() {
       setError(hash.get("error_code") === "otp_expired" ? "This sign-in link has expired. Please ask for a new one." : (hash.get("error_description") ?? "Sign-in failed.").replace(/\+/g, " "));
       return;
     }
+    // Default Supabase links put the token in the fragment; a customised email template can send
+    // ?token_hash=…&type=… instead, which the server verifies.
     const token = hash.get("access_token");
-    if (!token) {
+    const tokenHash = query.get("token_hash");
+    if (!token && !tokenHash) {
       setError("This sign-in link is incomplete. Please ask for a new one.");
       return;
     }
     history.replaceState(null, "", window.location.pathname); // don't leave the token in the address bar
-    fetch("/api/auth/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, marketing: query.get("m") === "1", next }) })
+    const proof = token ? { access_token: token } : { token_hash: tokenHash, type: query.get("type") ?? "email" };
+    fetch("/api/auth/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...proof, marketing: query.get("m") === "1", next }) })
       .then(async (r) => {
         const d = await r.json();
         if (!r.ok) throw new Error(d.error ?? "Sign-in failed.");
