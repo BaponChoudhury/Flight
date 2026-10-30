@@ -1,7 +1,7 @@
 // Business details shown on the Terms, Privacy and Cookies pages. Fill these in before launch.
 export const LEGAL = {
   /** Trading name shown to users. */
-  siteName: "Flights to India",
+  siteName: "Fly To Roots",
   /** Legal owner: your name (sole trader) or company name and number. */
   owner: "[OWNER NAME OR COMPANY NAME AND NUMBER]",
   /** A postal address for legal notices. */

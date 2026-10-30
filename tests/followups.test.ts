@@ -66,7 +66,7 @@ describe("post-trip compensation follow-ups", () => {
 
   it("sends due emails once, then forgets the address; unsubscribed trips get nothing", async () => {
     vi.stubEnv("RESEND_API_KEY", "re_test");
-    vi.stubEnv("EMAIL_FROM", "Flights to India <alerts@example.com>");
+    vi.stubEnv("EMAIL_FROM", "Fly To Roots <alerts@example.com>");
     vi.stubEnv("SITE_URL", "https://site.example");
     const sent: { to: string[]; subject: string; headers: Record<string, string> }[] = [];
     vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {

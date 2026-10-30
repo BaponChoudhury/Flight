@@ -2,7 +2,7 @@ import Link from "next/link";
 import { LegalPage } from "@/components/LegalPage";
 import { LEGAL } from "@/lib/config/legal";
 
-export const metadata = { title: "Privacy notice · Flights to India" };
+export const metadata = { title: "Privacy notice · Fly To Roots" };
 
 const DATA: [string, string, string, string][] = [
   [
@@ -42,6 +42,12 @@ const DATA: [string, string, string, string][] = [
     "Consent (you can withdraw it at any time)",
   ],
   [
+    "Analytics (only if you accept cookies)",
+    "Pages you visit, how you use the site, your device and browser, and approximate location, collected by Google Analytics with cookies.",
+    "To understand how the site is used and improve it.",
+    "Consent (withdraw any time with Cookie settings)",
+  ],
+  [
     "Contacting us",
     "Whatever you include in your message.",
     "To reply and keep a record of the conversation.",
@@ -55,6 +61,7 @@ const PROCESSORS: [string, string, string][] = [
   ["Email delivery", "Sending the emails you ask for (may be in the US).", "Email addresses and email content."],
   ["Flight price and booking partners", "Finding flight prices and booking links.", "Search details; one partner also receives your IP address."],
   ["Postcode lookup", "Finding your nearest airports.", "The town or postcode you type."],
+  ["Analytics (Google Analytics)", "Measuring how the site is used, only if you accept cookies (may be in the US).", "Usage data, device details and an online identifier."],
 ];
 
 export default function PrivacyPage() {
@@ -135,7 +142,7 @@ export default function PrivacyPage() {
       </p>
 
       <h2>Cookies</h2>
-      <p>We only use what&apos;s needed for the site to work. See our <Link href="/cookies">cookie policy</Link>.</p>
+      <p>We use essential cookies to make the site work, and Google Analytics cookies only if you accept them. See our <Link href="/cookies">cookie policy</Link>.</p>
 
       <h2>Children</h2>
       <p>The site is meant for adults booking travel. Accounts and email sign-ups are for people aged 18 or over.</p>

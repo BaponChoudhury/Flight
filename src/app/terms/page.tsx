@@ -2,7 +2,7 @@ import Link from "next/link";
 import { LegalPage } from "@/components/LegalPage";
 import { LEGAL } from "@/lib/config/legal";
 
-export const metadata = { title: "Terms and conditions · Flights to India" };
+export const metadata = { title: "Terms and conditions · Fly To Roots" };
 
 export default function TermsPage() {
   return (

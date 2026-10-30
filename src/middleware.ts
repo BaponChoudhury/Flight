@@ -12,7 +12,7 @@ export function middleware(req: NextRequest) {
   }
   return new NextResponse("Password required", {
     status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="Flight finder"' },
+    headers: { "WWW-Authenticate": 'Basic realm="Fly To Roots"' },
   });
 }
 

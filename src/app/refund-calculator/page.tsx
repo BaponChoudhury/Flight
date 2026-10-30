@@ -3,7 +3,7 @@ import { RefundCalculator } from "@/components/RefundCalculator";
 import { SignIn } from "@/components/SignIn";
 import { readSession, SESSION_COOKIE } from "@/lib/session";
 
-export const metadata = { title: "Flight refund calculator · Flights to India" };
+export const metadata = { title: "Flight refund calculator · Fly To Roots" };
 
 // Members only: the calculator sits behind an email-link sign-in.
 export default async function RefundCalculatorPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

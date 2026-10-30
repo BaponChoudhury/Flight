@@ -1,11 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { Fraunces, Inter } from "next/font/google";
+import { Analytics, CookieSettingsButton } from "@/components/Analytics";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Flights to India",
-  description: "Cheapest and fastest door-to-door routes from the UK to smaller Indian cities, including split tickets.",
+  title: "Fly To Roots: cheap flights from the UK to India, Pakistan, Bangladesh & Sri Lanka",
+  description: "Compare cheap flights from UK airports to India, Pakistan, Bangladesh and Sri Lanka. Split tickets other sites miss, door-to-door costs and connection checks.",
 };
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -26,7 +27,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                   <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z" />
                 </svg>
               </span>
-              <span className="whitespace-nowrap text-lg font-bold tracking-tight">Flights to India</span>
+              <span className="whitespace-nowrap text-lg font-bold tracking-tight">Fly To Roots</span>
             </Link>
             <div className="flex items-center gap-1">
               <Link href="/refund-calculator" className="rounded-lg px-3 py-1.5 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white">
@@ -46,10 +47,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <Link href="/terms" className="hover:underline">Terms</Link>
             <Link href="/privacy" className="hover:underline">Privacy</Link>
             <Link href="/cookies" className="hover:underline">Cookies</Link>
+            <CookieSettingsButton />
           </nav>
           <p>Prices come from airline and travel-agent sites and can change. Always check the final price before you book.</p>
           <p className="mt-1">We may earn a commission when you book through our links. It doesn&apos;t change your price.</p>
         </footer>
+        <Analytics />
       </body>
     </html>
   );

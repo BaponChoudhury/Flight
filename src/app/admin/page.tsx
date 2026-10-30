@@ -1,7 +1,7 @@
 import { AdminEditor } from "@/components/AdminEditor";
 
 // Hidden page: not linked anywhere, not indexed, and shows nothing until the admin password checks out.
-export const metadata = { title: "Admin · Flight Finder", robots: { index: false, follow: false } };
+export const metadata = { title: "Admin · Fly To Roots", robots: { index: false, follow: false } };
 
 export default function AdminPage() {
   return (
