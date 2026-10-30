@@ -48,9 +48,9 @@ function fareTermsText(t: FareTerms): string | null {
   return parts.length ? parts.join(" · ") : null;
 }
 
-// TESTING ONLY: shows which fare source (Ignav / Aviasales) each result came from, plus error and
-// call details that name our sources. Set to false before real users see the site.
-const SHOW_SOURCE_TAGS = true;
+// Which fare source (Ignav / Aviasales) each result came from, plus error and call details that
+// name our sources. Hidden from users; set NEXT_PUBLIC_SHOW_SOURCE_TAGS=1 (and redeploy) to see them while testing.
+const SHOW_SOURCE_TAGS = process.env.NEXT_PUBLIC_SHOW_SOURCE_TAGS === "1";
 const SOURCE_NAME: Record<ProviderId, string> = { ignav: "Ignav", aviasales: "Aviasales", duffel: "Duffel" };
 
 function SourceTag({ providers, others }: { providers: ProviderId[]; others?: RouteOption["otherPrices"] }) {
