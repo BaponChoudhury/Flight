@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { Fraunces, Inter } from "next/font/google";
+import { Analytics, CookieSettingsButton } from "@/components/Analytics";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -46,10 +47,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <Link href="/terms" className="hover:underline">Terms</Link>
             <Link href="/privacy" className="hover:underline">Privacy</Link>
             <Link href="/cookies" className="hover:underline">Cookies</Link>
+            <CookieSettingsButton />
           </nav>
           <p>Prices come from airline and travel-agent sites and can change. Always check the final price before you book.</p>
           <p className="mt-1">We may earn a commission when you book through our links. It doesn&apos;t change your price.</p>
         </footer>
+        <Analytics />
       </body>
     </html>
   );
