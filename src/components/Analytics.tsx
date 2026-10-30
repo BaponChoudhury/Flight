@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-// Google Analytics 4 with Google Consent Mode. The tag is in every page's HTML (so Google can detect
-// it), but analytics cookies stay off until the visitor accepts: before that, or after rejecting,
-// Google only gets cookieless signals. The consent default is set in the layout before the tag loads.
+// Google Analytics 4 under PECR's statistical-purposes exception (added by the Data (Use and Access)
+// Act 2025, in force since 5 February 2026): analytics cookies may be set without prior consent when
+// they're used only for statistics to improve the site, visitors are told, and they can opt out simply
+// and free. So GA counts every visitor unless they opt out. To stay inside the exception, ads storage,
+// Google signals and ad personalisation are off here, and the GA property must not share data with
+// Google for its own purposes (see README).
 export const GA_ID = process.env.NEXT_PUBLIC_GA_ID || "G-96PSQ9Q9EK";
-const KEY = "cookie-consent"; // "granted" | "denied"
+const KEY = "cookie-consent"; // "granted" (saw the notice) | "denied" (opted out)
 const OPEN_EVENT = "open-cookie-settings";
 
 type Choice = "granted" | "denied" | null;
@@ -36,7 +39,7 @@ export function Analytics() {
   useEffect(() => {
     const c = readChoice();
     setChoice(c);
-    setOpen(c === null);
+    setOpen(c === null); // show the notice until they've seen it once
     const reopen = () => setOpen(true);
     window.addEventListener(OPEN_EVENT, reopen);
     return () => window.removeEventListener(OPEN_EVENT, reopen);
@@ -46,36 +49,33 @@ export function Analytics() {
     try {
       localStorage.setItem(KEY, c);
     } catch {
-      /* storage unavailable: the banner shows again next visit */
+      /* storage unavailable: the notice shows again next visit */
     }
     setOpen(false);
     const w = window as unknown as { gtag?: (...args: unknown[]) => void };
     w.gtag?.("consent", "update", { analytics_storage: c });
-    // The page view for this page went out before consent, without cookies; send it again now so
-    // the visitor shows up in reports (and Realtime) straight away.
-    if (c === "granted") w.gtag?.("event", "page_view", { page_location: location.href, page_title: document.title });
-    if (c === "denied" && choice === "granted") {
-      // Analytics cookies were already set: remove them (consent is now denied, so no new ones).
-      clearGaCookies();
-    }
+    if (c === "denied") clearGaCookies();
+    // Opting back in after opting out: count this page now rather than from the next one.
+    else if (choice === "denied") w.gtag?.("event", "page_view", { page_location: location.href, page_title: document.title });
     setChoice(c);
   }
 
   return (
     <>
       {open && (
-        <div role="dialog" aria-label="Cookie choices" className="fixed inset-x-0 bottom-0 z-50 p-3 sm:p-4">
+        <div role="dialog" aria-label="Cookie notice" className="fixed inset-x-0 bottom-0 z-50 p-3 sm:p-4">
           <div className="mx-auto flex max-w-3xl flex-col gap-3 rounded-2xl bg-white p-4 text-sm shadow-2xl ring-1 ring-slate-200 sm:flex-row sm:items-center dark:bg-slate-900 dark:ring-slate-700">
             <p className="flex-1 text-slate-700 dark:text-slate-300">
-              We&apos;d like to use Google Analytics cookies to see how people use the site, so we can improve it. They&apos;re optional and only set if you
-              accept. <Link href="/cookies" className="font-semibold text-brand-600 underline dark:text-brand-300">Cookie policy</Link>
+              We use Google Analytics cookies to count visits and see how the site is used, so we can improve it. Only for statistics, never for ads.
+              {choice === "denied" ? " You've opted out." : " You can opt out at any time."}{" "}
+              <Link href="/cookies" className="font-semibold text-brand-600 underline dark:text-brand-300">Cookie policy</Link>
             </p>
             <div className="flex shrink-0 gap-2">
               <button type="button" onClick={() => decide("denied")} className="flex-1 rounded-xl border border-slate-300 px-4 py-2 font-semibold hover:bg-slate-50 sm:flex-none dark:border-slate-600 dark:hover:bg-slate-800">
-                Reject
+                Opt out
               </button>
               <button type="button" onClick={() => decide("granted")} className="flex-1 rounded-xl bg-brand-600 px-4 py-2 font-semibold text-white hover:bg-brand-700 sm:flex-none">
-                Accept
+                {choice === "denied" ? "Opt back in" : "OK"}
               </button>
             </div>
           </div>
@@ -85,7 +85,7 @@ export function Analytics() {
   );
 }
 
-/** Footer link that reopens the banner so visitors can change their mind. */
+/** Footer link that reopens the notice so visitors can opt out (or back in). */
 export function CookieSettingsButton() {
   return (
     <button type="button" className="hover:underline" onClick={() => window.dispatchEvent(new Event(OPEN_EVENT))}>
@@ -95,15 +95,15 @@ export function CookieSettingsButton() {
 }
 
 /**
- * Goes in <head>: sets the Consent Mode default (analytics cookies off unless this browser already
- * accepted; ads storage always off), then loads the Google tag.
+ * Goes in <head>: analytics on unless this browser opted out; ads storage, Google signals and ad
+ * personalisation always off. Then loads the Google tag.
  */
 export function GoogleTag() {
   const init = `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}
 var c=null;try{c=localStorage.getItem('${KEY}')}catch(e){}
-gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:c==='granted'?'granted':'denied'});
+gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:c==='denied'?'denied':'granted'});
 gtag('js',new Date());
-gtag('config','${GA_ID}');`;
+gtag('config','${GA_ID}',{allow_google_signals:false,allow_ad_personalization_signals:false});`;
   return (
     <>
       <script dangerouslySetInnerHTML={{ __html: init }} />

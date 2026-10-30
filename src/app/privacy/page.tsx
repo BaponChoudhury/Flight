@@ -43,9 +43,9 @@ const DATA: [string, string, string, string][] = [
   ],
   [
     "Analytics",
-    "Pages you visit, how you use the site, your device and browser, and approximate location (Google Analytics). With cookies only if you accept; otherwise cookieless signals that don't identify you.",
+    "Pages you visit, how you use the site, your device and browser, and approximate location (Google Analytics, with cookies). Used only for statistics; no advertising or profiling.",
     "To understand how the site is used and improve it.",
-    "Consent for analytics cookies (withdraw any time with Cookie settings); legitimate interests for cookieless signals",
+    "Legitimate interests; opt out any time with Cookie settings",
   ],
   [
     "Contacting us",
@@ -61,7 +61,7 @@ const PROCESSORS: [string, string, string][] = [
   ["Email delivery", "Sending the emails you ask for (may be in the US).", "Email addresses and email content."],
   ["Flight price and booking partners", "Finding flight prices and booking links.", "Search details; one partner also receives your IP address."],
   ["Postcode lookup", "Finding your nearest airports.", "The town or postcode you type."],
-  ["Analytics (Google Analytics)", "Measuring how the site is used (may be in the US).", "Usage data and device details; an online identifier only if you accept cookies."],
+  ["Analytics (Google Analytics)", "Visitor statistics (may be in the US). Advertising features and data sharing for Google's own purposes are off.", "Usage data, device details and an online identifier, unless you opt out."],
 ];
 
 export default function PrivacyPage() {
@@ -142,7 +142,7 @@ export default function PrivacyPage() {
       </p>
 
       <h2>Cookies</h2>
-      <p>We use essential cookies to make the site work, and Google Analytics cookies only if you accept them. See our <Link href="/cookies">cookie policy</Link>.</p>
+      <p>We use essential cookies to make the site work, and Google Analytics cookies for visitor statistics, which you can opt out of. See our <Link href="/cookies">cookie policy</Link>.</p>
 
       <h2>Children</h2>
       <p>The site is meant for adults booking travel. Accounts and email sign-ups are for people aged 18 or over.</p>

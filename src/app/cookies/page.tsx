@@ -11,7 +11,7 @@ const OURS: [string, string, string, string][] = [
 
 export default function CookiesPage() {
   return (
-    <LegalPage title="Cookie policy" intro="The cookies and similar storage we use. The essential ones keep the site working; Google Analytics is optional and only runs if you accept it.">
+    <LegalPage title="Cookie policy" intro="The cookies and similar storage we use: essential ones that keep the site working, and Google Analytics for visitor statistics, which you can opt out of at any time.">
       <h2>Essential (always on)</h2>
       <p>
         Under UK law (the Privacy and Electronic Communications Regulations), sites need your consent for cookies except those that are strictly necessary
@@ -30,11 +30,16 @@ export default function CookiesPage() {
         </table>
       </div>
 
-      <h2>Analytics (only if you accept)</h2>
+      <h2>Analytics (you can opt out)</h2>
       <p>
-        We use Google Analytics to count visits and see which pages and features people use, so we can improve the site. Its cookies are only set after
-        you click Accept on our cookie banner. Until then, or if you reject, it sets no cookies and stores nothing on your device; Google receives only
-        basic, cookieless signals (such as that a page was viewed) to estimate overall numbers. Google may process this data in the US.
+        We use Google Analytics to count visits and see which pages and features people use, so we can improve the site. We use it only for these
+        statistics: Google&apos;s advertising features, signals and ad personalisation are switched off, and we don&apos;t use it to identify or profile
+        you. UK law (PECR, as amended by the Data (Use and Access) Act 2025) allows cookies used only for this purpose without asking first, as long as
+        we tell you and you can opt out easily. Google may process this data in the US.
+      </p>
+      <p>
+        <strong>To opt out</strong>, choose <strong>Cookie settings</strong> at the bottom of any page and click <strong>Opt out</strong>. We then delete
+        the Google Analytics cookies and set no more.
       </p>
       <div className="overflow-x-auto">
         <table>
@@ -44,11 +49,11 @@ export default function CookiesPage() {
           <tbody>
             <tr><td className="font-mono text-xs">_ga</td><td>Google Analytics</td><td>Tells visits from the same browser apart.</td><td>2 years</td></tr>
             <tr><td className="font-mono text-xs">_ga_96PSQ9Q9EK</td><td>Google Analytics</td><td>Keeps track of your current visit.</td><td>2 years</td></tr>
-            <tr><td className="font-mono text-xs">cookie-consent</td><td>Us (local storage)</td><td>Remembers whether you accepted or rejected analytics.</td><td>Until you clear your browser data</td></tr>
+            <tr><td className="font-mono text-xs">cookie-consent</td><td>Us (local storage)</td><td>Remembers that you&apos;ve seen the notice, or that you opted out.</td><td>Until you clear your browser data</td></tr>
           </tbody>
         </table>
       </div>
-      <p>You can change your mind at any time with <strong>Cookie settings</strong> at the bottom of every page.</p>
+      <p>You can opt out, or back in, at any time with <strong>Cookie settings</strong> at the bottom of every page.</p>
 
       <h2>Third-party cookies</h2>
       <ul>
@@ -65,7 +70,7 @@ export default function CookiesPage() {
       <h2>Managing cookies</h2>
       <p>
         You can delete or block cookies in your browser settings. If you block the sign-in cookie, the members&apos; tools won&apos;t work; the rest of the
-        site will. If we add any other optional cookies, we&apos;ll ask for your consent first and update this page.
+        site will. If we add any cookies that need your consent (for example for advertising), we&apos;ll ask first and update this page.
       </p>
 
       <h2>More about your data</h2>

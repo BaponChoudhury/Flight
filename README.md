@@ -270,6 +270,16 @@ Uses Supabase Auth with the existing `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_K
 
 Admin → Members lists sign-ups and downloads a CSV of those who ticked the optional marketing box.
 
+## Google Analytics (opt-out, statistics only)
+GA4 (`G-96PSQ9Q9EK`, override with `NEXT_PUBLIC_GA_ID`) runs for every visitor unless they opt out
+(footer → Cookie settings). This relies on PECR's statistical-purposes exception (Data (Use and Access)
+Act 2025, in force 5 February 2026), which needs: statistics-only use, a clear notice, and a free, simple
+opt-out. The code keeps ads storage, Google signals and ad personalisation off. In the GA property also:
+- Admin → Data collection: leave **Google signals** off.
+- Admin → Account settings → Data sharing: untick sharing with **Google products & services** (and
+  "Modelling contributions" / "Recommendations for your business").
+- Don't link Google Ads.
+
 ## Known limitations / later
 
 **Origins outside the UK.** The **Any airport** tab lets users fly from anywhere. Still UK-specific:
