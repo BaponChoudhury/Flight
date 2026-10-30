@@ -18,4 +18,4 @@ export function middleware(req: NextRequest) {
 
 // Unsubscribe links in emails and the daily job must work even while the site is password-protected
 // (the job has its own CRON_SECRET; unsubscribe needs the link's token).
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|unsubscribe|api/followups/unsubscribe|api/cron).*)"] };
+export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|unsubscribe|api/followups/unsubscribe|api/cron).*)"] };
