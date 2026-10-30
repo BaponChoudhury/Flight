@@ -1,11 +1,11 @@
 "use client";
 
-import Script from "next/script";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-// Google Analytics 4. It sets tracking cookies, so under UK PECR it only loads after the visitor
-// accepts; until then (or if they reject) no request goes to Google at all.
+// Google Analytics 4 with Google Consent Mode. The tag is in every page's HTML (so Google can detect
+// it), but analytics cookies stay off until the visitor accepts: before that, or after rejecting,
+// Google only gets cookieless signals. The consent default is set in the layout before the tag loads.
 export const GA_ID = process.env.NEXT_PUBLIC_GA_ID || "G-96PSQ9Q9EK";
 const KEY = "cookie-consent"; // "granted" | "denied"
 const OPEN_EVENT = "open-cookie-settings";
@@ -49,28 +49,17 @@ export function Analytics() {
       /* storage unavailable: the banner shows again next visit */
     }
     setOpen(false);
+    const w = window as unknown as { gtag?: (...args: unknown[]) => void };
+    w.gtag?.("consent", "update", { analytics_storage: c });
     if (c === "denied" && choice === "granted") {
-      // Google's script is already running: clear its cookies and reload without it.
+      // Analytics cookies were already set: remove them (consent is now denied, so no new ones).
       clearGaCookies();
-      location.reload();
-      return;
     }
     setChoice(c);
   }
 
   return (
     <>
-      {choice === "granted" && (
-        <>
-          <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
-          <Script id="ga-init" strategy="afterInteractive">
-            {`window.dataLayer = window.dataLayer || [];
-function gtag(){dataLayer.push(arguments);}
-gtag('js', new Date());
-gtag('config', '${GA_ID}');`}
-          </Script>
-        </>
-      )}
       {open && (
         <div role="dialog" aria-label="Cookie choices" className="fixed inset-x-0 bottom-0 z-50 p-3 sm:p-4">
           <div className="mx-auto flex max-w-3xl flex-col gap-3 rounded-2xl bg-white p-4 text-sm shadow-2xl ring-1 ring-slate-200 sm:flex-row sm:items-center dark:bg-slate-900 dark:ring-slate-700">
@@ -99,5 +88,23 @@ export function CookieSettingsButton() {
     <button type="button" className="hover:underline" onClick={() => window.dispatchEvent(new Event(OPEN_EVENT))}>
       Cookie settings
     </button>
+  );
+}
+
+/**
+ * Goes in <head>: sets the Consent Mode default (analytics cookies off unless this browser already
+ * accepted; ads storage always off), then loads the Google tag.
+ */
+export function GoogleTag() {
+  const init = `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}
+var c=null;try{c=localStorage.getItem('${KEY}')}catch(e){}
+gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:c==='granted'?'granted':'denied'});
+gtag('js',new Date());
+gtag('config','${GA_ID}');`;
+  return (
+    <>
+      <script dangerouslySetInnerHTML={{ __html: init }} />
+      <script async src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} />
+    </>
   );
 }

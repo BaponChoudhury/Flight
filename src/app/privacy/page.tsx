@@ -42,10 +42,10 @@ const DATA: [string, string, string, string][] = [
     "Consent (you can withdraw it at any time)",
   ],
   [
-    "Analytics (only if you accept cookies)",
-    "Pages you visit, how you use the site, your device and browser, and approximate location, collected by Google Analytics with cookies.",
+    "Analytics",
+    "Pages you visit, how you use the site, your device and browser, and approximate location (Google Analytics). With cookies only if you accept; otherwise cookieless signals that don't identify you.",
     "To understand how the site is used and improve it.",
-    "Consent (withdraw any time with Cookie settings)",
+    "Consent for analytics cookies (withdraw any time with Cookie settings); legitimate interests for cookieless signals",
   ],
   [
     "Contacting us",
@@ -61,7 +61,7 @@ const PROCESSORS: [string, string, string][] = [
   ["Email delivery", "Sending the emails you ask for (may be in the US).", "Email addresses and email content."],
   ["Flight price and booking partners", "Finding flight prices and booking links.", "Search details; one partner also receives your IP address."],
   ["Postcode lookup", "Finding your nearest airports.", "The town or postcode you type."],
-  ["Analytics (Google Analytics)", "Measuring how the site is used, only if you accept cookies (may be in the US).", "Usage data, device details and an online identifier."],
+  ["Analytics (Google Analytics)", "Measuring how the site is used (may be in the US).", "Usage data and device details; an online identifier only if you accept cookies."],
 ];
 
 export default function PrivacyPage() {
