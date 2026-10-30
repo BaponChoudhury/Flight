@@ -51,6 +51,9 @@ export function Analytics() {
     setOpen(false);
     const w = window as unknown as { gtag?: (...args: unknown[]) => void };
     w.gtag?.("consent", "update", { analytics_storage: c });
+    // The page view for this page went out before consent, without cookies; send it again now so
+    // the visitor shows up in reports (and Realtime) straight away.
+    if (c === "granted") w.gtag?.("event", "page_view", { page_location: location.href, page_title: document.title });
     if (c === "denied" && choice === "granted") {
       // Analytics cookies were already set: remove them (consent is now denied, so no new ones).
       clearGaCookies();
