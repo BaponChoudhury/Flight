@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { LegalPage } from "@/components/LegalPage";
 
-export const metadata = { title: "Cookie policy · Flights to India" };
+export const metadata = { title: "Cookie policy · Fly To Roots" };
 
 const OURS: [string, string, string, string][] = [
   ["fl_session", "Cookie", "Keeps you signed in to the members' tools after you use an email link.", "30 days, or until you sign out"],

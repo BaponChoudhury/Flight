@@ -177,7 +177,7 @@ Travellers can opt in, from any result's details ("Free compensation check for t
 - **Admin → Compensation follow-up emails:** shows counts, the list, whether email is set up, and a **Send due emails now** button.
 - **Setup:**
   1. Run `supabase/migrations/0006_trip_followups.sql`.
-  2. In Vercel set `RESEND_API_KEY`, `EMAIL_FROM` (e.g. `Flights to India <alerts@yourdomain>`, on a domain verified in Resend) and `CRON_SECRET` (any long random string).
+  2. In Vercel set `RESEND_API_KEY`, `EMAIL_FROM` (e.g. `Fly To Roots <alerts@yourdomain>`, on a domain verified in Resend) and `CRON_SECRET` (any long random string).
   3. Optionally set `SITE_URL` (otherwise the Vercel production address is used for links).
 
   Until email is set up, opt-ins are saved and nothing is sent.

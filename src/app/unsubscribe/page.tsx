@@ -1,4 +1,4 @@
-export const metadata = { title: "Unsubscribe · Flights to India" };
+export const metadata = { title: "Unsubscribe · Fly To Roots" };
 
 const box = "rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-slate-200/80 dark:bg-slate-900 dark:ring-slate-800";
 

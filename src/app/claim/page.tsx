@@ -1,7 +1,7 @@
 import { CompensairFrame } from "@/components/CompensairFrame";
 import { COMPENSAIR_PARTNER, compensairFrameSrc } from "@/lib/followups";
 
-export const metadata = { title: "Claim flight compensation · Flights to India" };
+export const metadata = { title: "Claim flight compensation · Fly To Roots" };
 
 const RULES: [string, string][] = [
   ["Leaving the UK or EU", "Any airline. For example London → Delhi on Air India or Emirates."],

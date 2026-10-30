@@ -2,7 +2,7 @@ import Link from "next/link";
 import { LegalPage } from "@/components/LegalPage";
 import { LEGAL } from "@/lib/config/legal";
 
-export const metadata = { title: "Privacy notice · Flights to India" };
+export const metadata = { title: "Privacy notice · Fly To Roots" };
 
 const DATA: [string, string, string, string][] = [
   [
