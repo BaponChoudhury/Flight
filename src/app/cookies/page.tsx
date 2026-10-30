@@ -32,8 +32,9 @@ export default function CookiesPage() {
 
       <h2>Analytics (only if you accept)</h2>
       <p>
-        We use Google Analytics to count visits and see which pages and features people use, so we can improve the site. It only loads after you click
-        Accept on our cookie banner; if you reject, nothing is sent to Google. Google may process this data in the US.
+        We use Google Analytics to count visits and see which pages and features people use, so we can improve the site. Its cookies are only set after
+        you click Accept on our cookie banner. Until then, or if you reject, it sets no cookies and stores nothing on your device; Google receives only
+        basic, cookieless signals (such as that a page was viewed) to estimate overall numbers. Google may process this data in the US.
       </p>
       <div className="overflow-x-auto">
         <table>

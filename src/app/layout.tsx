@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { Fraunces, Inter } from "next/font/google";
-import { Analytics, CookieSettingsButton } from "@/components/Analytics";
+import { Analytics, CookieSettingsButton, GoogleTag } from "@/components/Analytics";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -18,6 +18,9 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, them
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${inter.variable} ${fraunces.variable}`}>
+      <head>
+        <GoogleTag />
+      </head>
       <body className="min-h-screen antialiased">
         <header className="bg-brand-950 text-white">
           <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
