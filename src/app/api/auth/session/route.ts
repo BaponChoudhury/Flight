@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { authConfigured, safeNext, userFromToken } from "@/lib/auth";
+import { authConfigured, safeNext, userFromToken, userFromTokenHash } from "@/lib/auth";
 import { SESSION_COOKIE, SESSION_DAYS, signSession } from "@/lib/session";
 import { getStore } from "@/lib/store";
 
@@ -9,9 +9,10 @@ export const runtime = "nodejs";
 // with Supabase, record the member (and their marketing choice) and set our session cookie.
 export async function POST(request: Request) {
   if (!authConfigured()) return NextResponse.json({ error: "Sign-in isn't available right now." }, { status: 503 });
-  const body = (await request.json().catch(() => null)) as { access_token?: unknown; marketing?: unknown; next?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as { access_token?: unknown; token_hash?: unknown; type?: unknown; marketing?: unknown; next?: unknown } | null;
   const token = typeof body?.access_token === "string" ? body.access_token : "";
-  const user = token ? await userFromToken(token) : null;
+  const tokenHash = typeof body?.token_hash === "string" ? body.token_hash : "";
+  const user = token ? await userFromToken(token) : tokenHash ? await userFromTokenHash(tokenHash, String(body?.type ?? "email")) : null;
   if (!user) return NextResponse.json({ error: "This sign-in link has expired or was already used. Please ask for a new one." }, { status: 401 });
   try {
     await getStore().upsertMember({ user_id: user.id, email: user.email.toLowerCase(), marketing_opt_in: body?.marketing === true });

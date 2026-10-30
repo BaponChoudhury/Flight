@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { Fraunces, Inter } from "next/font/google";
 import { Analytics, CookieSettingsButton, GoogleTag } from "@/components/Analytics";
+import { AuthLinkCatcher } from "@/components/AuthLinkCatcher";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -56,6 +57,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <p className="mt-1">We may earn a commission when you book through our links. It doesn&apos;t change your price.</p>
         </footer>
         <Analytics />
+        <AuthLinkCatcher />
       </body>
     </html>
   );
